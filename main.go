@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/poechsel/Peerster/lib"
-	"net"
 	"strings"
 	"sync"
 )
@@ -14,26 +13,65 @@ func ignore(x interface{}) {
 }
 
 type State struct {
-	known_peers map[string]bool
-	mux         sync.Mutex
+	Known_peers map[string]*lib.Peer
+	Mux         sync.Mutex
 }
 
-func (state *State) addPeer(peer string) bool {
-	if _, ok := state.known_peers[peer]; ok {
+func (state *State) addPeer(address string) bool {
+	if _, ok := state.Known_peers[address]; ok {
 		return false
 	} else {
-		state.mux.Lock()
-		state.known_peers[peer] = true
-		state.mux.Unlock()
+		state.Mux.Lock()
+		if peer, err := lib.NewPeer(address); err != nil {
+			state.Known_peers[peer.CanonicalAddress] = peer
+		}
+		state.Mux.Unlock()
 		return true
 	}
 }
 
-func receiver_loop(client_conn *net.UDPConn, queue chan *lib.GossipPacket) {
+func broadcast(message *lib.SimpleMessage, state *State, avoid *string) {
+	// should think about the lock
+	for addr, peer := range state.Known_peers {
+		if avoid != nil && *avoid == addr {
+			peer.SendGossip(&lib.GossipPacket{Simple: message})
+		}
+	}
+}
+
+func receiver_loop(gossiper *lib.Gossiper, client_conn *lib.Gossiper, state *State) {
 	for {
-		packet, err := lib.ReceiveGossip(client_conn)
+		packet, err := client_conn.ReceiveGossip()
 		if err == nil {
-			queue <- packet
+			if packet.Simple != nil {
+				fmt.Println(packet.Simple.Contents)
+				go broadcast(
+					&lib.SimpleMessage{
+						OriginalName:  gossiper.Name,
+						RelayPeerAddr: gossiper.CanonicalAddress,
+						Contents:      packet.Simple.Contents},
+					state,
+					nil)
+			}
+		}
+	}
+}
+
+func gossip_loop(gossiper *lib.Gossiper, state *State) {
+	for {
+		packet, err := gossiper.ReceiveGossip()
+		if err == nil {
+			if packet.Simple != nil {
+				fmt.Println(packet.Simple.Contents)
+				go state.addPeer(packet.Simple.RelayPeerAddr)
+				go broadcast(
+					&lib.SimpleMessage{
+						OriginalName:  packet.Simple.OriginalName,
+						RelayPeerAddr: gossiper.CanonicalAddress,
+						Contents:      packet.Simple.Contents},
+					state,
+					&packet.Simple.RelayPeerAddr)
+			}
 		}
 	}
 }
@@ -46,47 +84,27 @@ func main() {
 	var _ = flag.Bool("simple", false, "run gossiper in simple broadcast mode")
 	flag.Parse()
 
-	known_peers := make(map[string]bool)
-	ignore(known_peers)
 	peers_list := strings.Split(*peers_param, ",")
 	ignore(peers_list)
 
-	client_queue := make(chan *lib.GossipPacket)
-	event_queue := make(chan *lib.GossipPacket)
-	ignore(event_queue)
-
 	gossiper, err := lib.NewGossiper(*gossip_addr, *gossip_name)
 	ignore(err)
-	ignore(gossiper)
 
-	client_conn, _, err := lib.OpenPermanentConnection("127.0.0.1:" + *client_port)
-	fmt.Println(err)
+	client_server, err := lib.NewGossiper("127.0.0.1:"+*client_port, "client")
+	ignore(err)
 
-	go receiver_loop(client_conn, client_queue)
+	state := State{}
 
-	for packet := range client_queue {
-		fmt.Println(packet.Simple.Contents)
+	for _, peer_addr := range peers_list {
+		if peer, err := lib.NewPeer(peer_addr); err != nil {
+			state.Known_peers[peer.CanonicalAddress] = peer
+		}
 	}
 
-	/*
-		    for _, peer := range peers_list {
-				peer_addr, err := lib.AddrOfString(peer)
-				if err == nil {
-					conn, err := net.ListenUDP("udp4", peer_addr)
-					if err == nil {
-						go func() {
-							for {
-								data, sender := conn.Receive()
-								fmt.
-							}
-						}()
-					}
-				}
-			}
-	*/
+	go receiver_loop(gossiper, client_server, &state)
+	go gossip_loop(gossiper, &state)
 
-	/*
-		for _, event := range event_queue {
-
-		}*/
+	// infinite loop
+	for {
+	}
 }
