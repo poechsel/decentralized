@@ -15,6 +15,7 @@ func ignore(x interface{}) {
 type State struct {
 	mux         sync.RWMutex
 	Known_peers map[string]*lib.Peer
+	simple      bool
 }
 
 func (state *State) addPeer(address string) bool {
@@ -55,7 +56,7 @@ func receiver_loop(gossiper *lib.Gossiper, client_conn *lib.Gossiper, state *Sta
 	for {
 		packet, err := client_conn.ReceiveGossip()
 		if err == nil {
-			if packet.Simple != nil {
+			if state.simple && packet.Simple != nil {
 				fmt.Println("CLIENT MESSAGE", packet.Simple.Contents)
 				fmt.Println("PEERS", state)
 				go broadcast(
@@ -74,7 +75,7 @@ func gossip_loop(gossiper *lib.Gossiper, state *State) {
 	for {
 		packet, err := gossiper.ReceiveGossip()
 		if err == nil {
-			if packet.Simple != nil {
+			if state.simple && packet.Simple != nil {
 				fmt.Println("SIMPLE MESSAGE", packet.Simple)
 				state.addPeer(packet.Simple.RelayPeerAddr)
 				fmt.Println("PEERS", state)
@@ -95,7 +96,7 @@ func main() {
 	gossip_addr := flag.String("gossipAddr", "127.0.0.1:5000", "ip:port for the gossiper")
 	gossip_name := flag.String("name", "", "name of the gossiper")
 	peers_param := flag.String("peers", "", "comma separated list of peers of the form ip:port")
-	var _ = flag.Bool("simple", false, "run gossiper in simple broadcast mode")
+	var simple = flag.Bool("simple", false, "run gossiper in simple broadcast mode")
 	flag.Parse()
 
 	peers_list := strings.Split(*peers_param, ",")
@@ -107,7 +108,7 @@ func main() {
 	client_server, err := lib.NewGossiper("127.0.0.1:"+*client_port, "client")
 	ignore(err)
 
-	state := State{Known_peers: make(map[string]*lib.Peer)}
+	state := State{Known_peers: make(map[string]*lib.Peer), simple: *simple}
 
 	for _, peer_addr := range peers_list {
 		state.addPeer(peer_addr)
