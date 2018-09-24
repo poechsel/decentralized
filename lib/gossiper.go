@@ -12,6 +12,10 @@ type SimpleMessage struct {
 	Contents      string
 }
 
+func (msg SimpleMessage) String() string {
+	return "origin " + msg.OriginalName + " from " + msg.RelayPeerAddr + " contents " + msg.Contents
+}
+
 type GossipPacket struct {
 	Simple *SimpleMessage
 }
