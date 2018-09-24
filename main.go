@@ -13,52 +13,39 @@ func ignore(x interface{}) {
 }
 
 type State struct {
-	mux         sync.Mutex
+	mux         sync.RWMutex
 	Known_peers map[string]*lib.Peer
 }
 
 func (state *State) addPeer(address string) bool {
-	fmt.Println("trying to add", address)
-	if address == "" {
-		return false
-	}
-	if _, ok := state.Known_peers[address]; ok {
+	state.mux.Lock()
+	defer state.mux.Unlock()
+	if _, ok := state.Known_peers[address]; address == "" || ok {
 		return false
 	} else {
-		state.Mux.Lock()
-		/* Why rechecking for the existence of the key here as we
-		already did it three lines ago ?
-		For performances reasons. We don't want to block the
-		program each time we try to add a Peer.
-		The first check allows us to prune quickly. However, two
-		routines might want to add the same peer at the same time.
-		This will thus allocate twice a connection, which we don't want.
-		Thus, once we are inside the lock, we are checking again
-		*/
-		fmt.Println("trying to add", address)
-		if _, ok := state.Known_peers[address]; !ok {
-			peer, err := lib.NewPeer(address)
-			fmt.Println(peer, err)
-			if err == nil {
-				fmt.Println("trying to add", address)
-				fmt.Println(state.Known_peers, peer, peer.CanonicalAddress)
-				state.Known_peers[peer.CanonicalAddress] = peer
-				fmt.Println("done")
-			}
+		peer, err := lib.NewPeer(address)
+		if err == nil {
+			state.Known_peers[peer.CanonicalAddress] = peer
 		}
-		state.Mux.Unlock()
 		return true
 	}
 }
 
+func (state *State) String() string {
+	state.mux.RLock()
+	defer state.mux.RUnlock()
+	keys := make([]string, 0, len(state.Known_peers))
+	for key := range state.Known_peers {
+		keys = append(keys, key)
+	}
+	return strings.Join(keys, ",")
+}
+
 func broadcast(message *lib.SimpleMessage, state *State, avoid *string) {
-	/* No need to lock here. In the most extreme case we
-	will send the message to more persons */
-	// should think about the lock
-	fmt.Println("broadcasting")
+	state.mux.RLock()
+	defer state.mux.RUnlock()
 	for addr, peer := range state.Known_peers {
 		if avoid == nil || *avoid != addr {
-			fmt.Println("sending to", peer.CanonicalAddress)
 			peer.SendGossip(&lib.GossipPacket{Simple: message})
 		}
 	}
@@ -70,6 +57,7 @@ func receiver_loop(gossiper *lib.Gossiper, client_conn *lib.Gossiper, state *Sta
 		if err == nil {
 			if packet.Simple != nil {
 				fmt.Println("CLIENT MESSAGE", packet.Simple.Contents)
+				fmt.Println("PEERS", state)
 				go broadcast(
 					&lib.SimpleMessage{
 						OriginalName:  gossiper.Name,
@@ -87,10 +75,9 @@ func gossip_loop(gossiper *lib.Gossiper, state *State) {
 		packet, err := gossiper.ReceiveGossip()
 		if err == nil {
 			if packet.Simple != nil {
-				fmt.Println(
-					"SIMPLE MESSAGE",
-					packet.Simple)
-				go state.addPeer(packet.Simple.RelayPeerAddr)
+				fmt.Println("SIMPLE MESSAGE", packet.Simple)
+				state.addPeer(packet.Simple.RelayPeerAddr)
+				fmt.Println("PEERS", state)
 				go broadcast(
 					&lib.SimpleMessage{
 						OriginalName:  packet.Simple.OriginalName,
