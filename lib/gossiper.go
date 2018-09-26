@@ -1,7 +1,6 @@
 package lib
 
 import (
-	"fmt"
 	"github.com/dedis/protobuf"
 	"net"
 )
@@ -27,12 +26,7 @@ type Gossiper struct {
 	CanonicalAddress string
 }
 
-type Peer struct {
-	Address          *net.UDPAddr
-	Conn             *net.UDPConn
-	CanonicalAddress string
-}
-
+/*
 func SendGossipTo(conn *net.UDPConn, msg *GossipPacket, address *net.UDPAddr) (int, error) {
 	packetBytes, err := protobuf.Encode(msg)
 	if err != nil {
@@ -40,27 +34,7 @@ func SendGossipTo(conn *net.UDPConn, msg *GossipPacket, address *net.UDPAddr) (i
 	}
 	return conn.WriteToUDP(packetBytes, address)
 }
-
-func (peer *Peer) SendGossip(msg *GossipPacket) (int, error) {
-	packetBytes, err := protobuf.Encode(msg)
-	if err != nil {
-		return -1, err
-	}
-	return peer.Conn.Write(packetBytes)
-
-}
-
-func NewPeer(address string) (*Peer, error) {
-	udpAddr, err := AddrOfString(address)
-	if err != nil {
-		return nil, err
-	}
-	udpConn, err := net.DialUDP("udp", nil, udpAddr)
-	return &Peer{
-		CanonicalAddress: StringOfAddr(udpAddr),
-		Address:          udpAddr,
-		Conn:             udpConn}, err
-}
+*/
 
 func (gossip *Gossiper) ReceiveGossip() (*GossipPacket, error) {
 	buffer := make([]byte, 65536)
@@ -73,25 +47,6 @@ func (gossip *Gossiper) ReceiveGossip() (*GossipPacket, error) {
 	packet := &GossipPacket{}
 	err = protobuf.Decode(data, packet)
 	return packet, err
-}
-
-func AddrOfString(address string) (*net.UDPAddr, error) {
-	return net.ResolveUDPAddr("udp", address)
-}
-
-/* StringOfAddr make a string of an net.UDPAddr address.
-Warning: this is not the inverse of StringToAddr */
-func StringOfAddr(addr *net.UDPAddr) string {
-	return addr.IP.String() + ":" + fmt.Sprintf("%v", addr.Port)
-}
-
-func OpenPermanentConnection(address string) (*net.UDPConn, *net.UDPAddr, error) {
-	udpAddr, err := AddrOfString(address)
-	if err != nil {
-		return nil, nil, err
-	}
-	udpConn, err := net.ListenUDP("udp", udpAddr)
-	return udpConn, udpAddr, err
 }
 
 func NewGossiper(address, name string) (*Gossiper, error) {
