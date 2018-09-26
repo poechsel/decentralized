@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"fmt"
 	"github.com/dedis/protobuf"
 	"net"
 )
@@ -20,10 +21,10 @@ type GossipPacket struct {
 }
 
 type Gossiper struct {
-	Address          *net.UDPAddr
-	Name             string
-	Conn             *net.UDPConn
-	CanonicalAddress string
+	Address       *net.UDPAddr
+	Name          string
+	Conn          *net.UDPConn
+	StringAddress string
 }
 
 /*
@@ -36,25 +37,26 @@ func SendGossipTo(conn *net.UDPConn, msg *GossipPacket, address *net.UDPAddr) (i
 }
 */
 
-func (gossip *Gossiper) ReceiveGossip() (*GossipPacket, error) {
+func (gossip *Gossiper) ReceiveGossip() (*GossipPacket, string, error) {
 	buffer := make([]byte, 65536)
-	bytes_read, _, err := gossip.Conn.ReadFromUDP(buffer)
+	bytes_read, address, err := gossip.Conn.ReadFromUDP(buffer)
+	fmt.Println(address)
 
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	data := buffer[:bytes_read]
 	packet := &GossipPacket{}
 	err = protobuf.Decode(data, packet)
-	return packet, err
+	return packet, StringOfAddr(address), err
 }
 
 func NewGossiper(address, name string) (*Gossiper, error) {
 	udpConn, udpAddr, err := OpenPermanentConnection(address)
 	return &Gossiper{
-		CanonicalAddress: StringOfAddr(udpAddr),
-		Address:          udpAddr,
-		Conn:             udpConn,
-		Name:             name,
+		StringAddress: StringOfAddr(udpAddr),
+		Address:       udpAddr,
+		Conn:          udpConn,
+		Name:          name,
 	}, err
 }

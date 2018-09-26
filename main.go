@@ -26,7 +26,7 @@ func (state *State) addPeer(address string) bool {
 	} else {
 		peer, err := lib.NewPeer(address)
 		if err == nil {
-			state.Known_peers[peer.CanonicalAddress] = peer
+			state.Known_peers[address] = peer
 		}
 		return true
 	}
@@ -42,7 +42,7 @@ func (state *State) String() string {
 	return strings.Join(keys, ",")
 }
 
-func broadcast(message *lib.SimpleMessage, state *State, avoid *string) {
+func (state *State) broadcast(message *lib.SimpleMessage, avoid *string) {
 	state.mux.RLock()
 	defer state.mux.RUnlock()
 	for addr, peer := range state.Known_peers {
@@ -54,17 +54,16 @@ func broadcast(message *lib.SimpleMessage, state *State, avoid *string) {
 
 func receiver_loop(gossiper *lib.Gossiper, client_conn *lib.Gossiper, state *State) {
 	for {
-		packet, err := client_conn.ReceiveGossip()
+		packet, _, err := client_conn.ReceiveGossip()
 		if err == nil {
 			if state.simple && packet.Simple != nil {
 				fmt.Println("CLIENT MESSAGE", packet.Simple.Contents)
 				fmt.Println("PEERS", state)
-				go broadcast(
+				go state.broadcast(
 					&lib.SimpleMessage{
 						OriginalName:  gossiper.Name,
-						RelayPeerAddr: gossiper.CanonicalAddress,
+						RelayPeerAddr: gossiper.StringAddress,
 						Contents:      packet.Simple.Contents},
-					state,
 					nil)
 			}
 		}
@@ -73,19 +72,18 @@ func receiver_loop(gossiper *lib.Gossiper, client_conn *lib.Gossiper, state *Sta
 
 func gossip_loop(gossiper *lib.Gossiper, state *State) {
 	for {
-		packet, err := gossiper.ReceiveGossip()
+		packet, address, err := gossiper.ReceiveGossip()
 		if err == nil {
 			if state.simple && packet.Simple != nil {
 				fmt.Println("SIMPLE MESSAGE", packet.Simple)
-				state.addPeer(packet.Simple.RelayPeerAddr)
+				state.addPeer(address)
 				fmt.Println("PEERS", state)
-				go broadcast(
+				go state.broadcast(
 					&lib.SimpleMessage{
 						OriginalName:  packet.Simple.OriginalName,
-						RelayPeerAddr: gossiper.CanonicalAddress,
+						RelayPeerAddr: gossiper.StringAddress,
 						Contents:      packet.Simple.Contents},
-					state,
-					&packet.Simple.RelayPeerAddr)
+					&address)
 			}
 		}
 	}

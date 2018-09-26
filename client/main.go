@@ -10,12 +10,13 @@ func main() {
 	var msg = flag.String("msg", "", "message to be sent")
 	flag.Parse()
 
-	peer, _ := lib.NewPeer("127.0.0.1:" + *port)
+	address := "127.0.0.1:" + *port
+	peer, _ := lib.NewPeer(address)
 	gossip_packet :=
 		&lib.GossipPacket{
 			&lib.SimpleMessage{
 				"client",
-				peer.CanonicalAddress,
+				address,
 				*msg}}
 	peer.SendGossip(gossip_packet)
 }

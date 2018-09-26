@@ -12,11 +12,12 @@ func AddrOfString(address string) (*net.UDPAddr, error) {
 /* StringOfAddr make a string of an net.UDPAddr address.
 Warning: this is not the inverse of StringToAddr */
 func StringOfAddr(addr *net.UDPAddr) string {
-	return addr.IP.String() + ":" + fmt.Sprintf("%v", addr.Port)
+	return addr.String()
 }
 
 func OpenPermanentConnection(address string) (*net.UDPConn, *net.UDPAddr, error) {
 	udpAddr, err := AddrOfString(address)
+	fmt.Println("Create gossip at ADDRESS: ", udpAddr)
 	if err != nil {
 		return nil, nil, err
 	}

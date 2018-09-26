@@ -1,14 +1,14 @@
 package lib
 
 import (
+	"fmt"
 	"github.com/dedis/protobuf"
 	"net"
 )
 
 type Peer struct {
-	Address          *net.UDPAddr
-	Conn             *net.UDPConn
-	CanonicalAddress string
+	Address *net.UDPAddr
+	Conn    *net.UDPConn
 }
 
 func (peer *Peer) SendGossip(msg *GossipPacket) (int, error) {
@@ -25,9 +25,9 @@ func NewPeer(address string) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("IMPORTANT", udpAddr)
 	udpConn, err := net.DialUDP("udp", nil, udpAddr)
 	return &Peer{
-		CanonicalAddress: StringOfAddr(udpAddr),
-		Address:          udpAddr,
-		Conn:             udpConn}, err
+		Address: udpAddr,
+		Conn:    udpConn}, err
 }
