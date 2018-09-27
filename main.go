@@ -45,10 +45,9 @@ func (state *State) String() string {
 func (state *State) broadcast(gossiper *lib.Gossiper, message *lib.SimpleMessage, avoid string) {
 	state.mux.RLock()
 	defer state.mux.RUnlock()
-	for addr, _ := range state.Known_peers {
+	for addr, peer := range state.Known_peers {
 		if avoid != addr {
-			o, _ := lib.AddrOfString(addr)
-			gossiper.SendGossipTo(&lib.GossipPacket{Simple: message}, o)
+			gossiper.SendGossipTo(&lib.GossipPacket{Simple: message}, peer.Address)
 		}
 	}
 }
