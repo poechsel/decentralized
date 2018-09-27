@@ -37,18 +37,26 @@ func SendGossipTo(conn *net.UDPConn, msg *GossipPacket, address *net.UDPAddr) (i
 }
 */
 
-func (gossip *Gossiper) ReceiveGossip() (*GossipPacket, string, error) {
+func (gossip *Gossiper) ReceiveGossip() (*GossipPacket, *net.UDPAddr, error) {
 	buffer := make([]byte, 65536)
 	bytes_read, address, err := gossip.Conn.ReadFromUDP(buffer)
 	fmt.Println(address)
 
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 	data := buffer[:bytes_read]
 	packet := &GossipPacket{}
 	err = protobuf.Decode(data, packet)
-	return packet, StringOfAddr(address), err
+	return packet, address, err
+}
+
+func (gossip *Gossiper) SendGossipTo(msg *GossipPacket, address *net.UDPAddr) (int, error) {
+	packetBytes, err := protobuf.Encode(msg)
+	if err != nil {
+		return -1, err
+	}
+	return gossip.Conn.WriteToUDP(packetBytes, address)
 }
 
 func NewGossiper(address, name string) (*Gossiper, error) {

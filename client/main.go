@@ -2,7 +2,9 @@ package main
 
 import (
 	"flag"
+	"github.com/dedis/protobuf"
 	"github.com/poechsel/Peerster/lib"
+	"net"
 )
 
 func main() {
@@ -11,12 +13,17 @@ func main() {
 	flag.Parse()
 
 	address := "127.0.0.1:" + *port
-	peer, _ := lib.NewPeer(address)
+	udpAddr, err := lib.AddrOfString(address)
+	lib.ExitIfError(err)
+	udpConn, err := net.DialUDP("udp", nil, udpAddr)
+	lib.ExitIfError(err)
 	gossip_packet :=
 		&lib.GossipPacket{
 			&lib.SimpleMessage{
 				"client",
 				address,
 				*msg}}
-	peer.SendGossip(gossip_packet)
+	packetBytes, err := protobuf.Encode(gossip_packet)
+	lib.ExitIfError(err)
+	udpConn.Write(packetBytes)
 }

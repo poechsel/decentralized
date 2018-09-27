@@ -3,6 +3,7 @@ package lib
 import (
 	"fmt"
 	"net"
+	"os"
 )
 
 func AddrOfString(address string) (*net.UDPAddr, error) {
@@ -23,4 +24,11 @@ func OpenPermanentConnection(address string) (*net.UDPConn, *net.UDPAddr, error)
 	}
 	udpConn, err := net.ListenUDP("udp", udpAddr)
 	return udpConn, udpAddr, err
+}
+
+func ExitIfError(err error) {
+	if err != nil {
+		fmt.Errorf("[Error]: %g", err)
+		os.Exit(1)
+	}
 }

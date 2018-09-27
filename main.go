@@ -42,12 +42,13 @@ func (state *State) String() string {
 	return strings.Join(keys, ",")
 }
 
-func (state *State) broadcast(message *lib.SimpleMessage, avoid *string) {
+func (state *State) broadcast(gossiper *lib.Gossiper, message *lib.SimpleMessage, avoid string) {
 	state.mux.RLock()
 	defer state.mux.RUnlock()
-	for addr, peer := range state.Known_peers {
-		if avoid == nil || *avoid != addr {
-			peer.SendGossip(&lib.GossipPacket{Simple: message})
+	for addr, _ := range state.Known_peers {
+		if avoid != addr {
+			o, _ := lib.AddrOfString(addr)
+			gossiper.SendGossipTo(&lib.GossipPacket{Simple: message}, o)
 		}
 	}
 }
@@ -60,11 +61,12 @@ func receiver_loop(gossiper *lib.Gossiper, client_conn *lib.Gossiper, state *Sta
 				fmt.Println("CLIENT MESSAGE", packet.Simple.Contents)
 				fmt.Println("PEERS", state)
 				go state.broadcast(
+					gossiper,
 					&lib.SimpleMessage{
 						OriginalName:  gossiper.Name,
 						RelayPeerAddr: gossiper.StringAddress,
 						Contents:      packet.Simple.Contents},
-					nil)
+					"")
 			}
 		}
 	}
@@ -72,18 +74,20 @@ func receiver_loop(gossiper *lib.Gossiper, client_conn *lib.Gossiper, state *Sta
 
 func gossip_loop(gossiper *lib.Gossiper, state *State) {
 	for {
-		packet, address, err := gossiper.ReceiveGossip()
+		packet, source, err := gossiper.ReceiveGossip()
+		source_string := lib.StringOfAddr(source)
 		if err == nil {
 			if state.simple && packet.Simple != nil {
 				fmt.Println("SIMPLE MESSAGE", packet.Simple)
-				state.addPeer(address)
+				state.addPeer(source_string)
 				fmt.Println("PEERS", state)
 				go state.broadcast(
+					gossiper,
 					&lib.SimpleMessage{
 						OriginalName:  packet.Simple.OriginalName,
 						RelayPeerAddr: gossiper.StringAddress,
 						Contents:      packet.Simple.Contents},
-					&address)
+					source_string)
 			}
 		}
 	}
