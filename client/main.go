@@ -19,7 +19,7 @@ func main() {
 	lib.ExitIfError(err)
 	gossip_packet :=
 		&lib.GossipPacket{
-			&lib.SimpleMessage{
+			Simple: &lib.SimpleMessage{
 				"client",
 				address,
 				*msg}}
