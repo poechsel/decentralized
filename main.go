@@ -12,6 +12,10 @@ func ignore(x interface{}) {
 	_ = x
 }
 
+var send_queue = make(lib.NetChannel)
+var client_queue = make(lib.NetChannel)
+var msg_queue = make(lib.NetChannel)
+
 type State struct {
 	mux         sync.RWMutex
 	Known_peers map[string]*lib.Peer
@@ -32,9 +36,10 @@ func (state *State) addPeer(address string) bool {
 	}
 }
 
-func (state *State) String() string {
+func (state State) String() string {
 	state.mux.RLock()
 	defer state.mux.RUnlock()
+	fmt.Println("CALLED")
 	keys := make([]string, 0, len(state.Known_peers))
 	for key := range state.Known_peers {
 		keys = append(keys, key)
@@ -47,51 +52,10 @@ func (state *State) broadcast(gossiper *lib.Gossiper, message *lib.SimpleMessage
 	defer state.mux.RUnlock()
 	for addr, peer := range state.Known_peers {
 		if avoid != addr {
-			gossiper.SendGossipTo(&lib.GossipPacket{Simple: message}, peer.Address)
+			gossiper.SendPacket(&lib.GossipPacket{Simple: message}, peer.Address, send_queue)
 		}
 	}
 }
-
-func receiver_loop(gossiper *lib.Gossiper, client_conn *lib.Gossiper, state *State) {
-	for {
-		packet, _, err := client_conn.ReceiveGossip()
-		if err == nil {
-			if state.simple && packet.Simple != nil {
-				fmt.Println("CLIENT MESSAGE", packet.Simple.Contents)
-				fmt.Println("PEERS", state)
-				go state.broadcast(
-					gossiper,
-					&lib.SimpleMessage{
-						OriginalName:  gossiper.Name,
-						RelayPeerAddr: gossiper.StringAddress,
-						Contents:      packet.Simple.Contents},
-					"")
-			}
-		}
-	}
-}
-
-func gossip_loop(gossiper *lib.Gossiper, state *State) {
-	for {
-		packet, source, err := gossiper.ReceiveGossip()
-		source_string := lib.StringOfAddr(source)
-		if err == nil {
-			if state.simple && packet.Simple != nil {
-				fmt.Println("SIMPLE MESSAGE", packet.Simple)
-				state.addPeer(source_string)
-				fmt.Println("PEERS", state)
-				go state.broadcast(
-					gossiper,
-					&lib.SimpleMessage{
-						OriginalName:  packet.Simple.OriginalName,
-						RelayPeerAddr: gossiper.StringAddress,
-						Contents:      packet.Simple.Contents},
-					source_string)
-			}
-		}
-	}
-}
-
 func main() {
 	client_port := flag.String("UIPort", "8080", "Port for the UI client")
 	gossip_addr := flag.String("gossipAddr", "127.0.0.1:5000", "ip:port for the gossiper")
@@ -115,10 +79,45 @@ func main() {
 		state.addPeer(peer_addr)
 	}
 
-	go receiver_loop(gossiper, client_server, &state)
-	go gossip_loop(gossiper, &state)
+	go gossiper.ReceiveLoop(msg_queue)
+	go client_server.ReceiveLoop(client_queue)
 
 	// infinite loop
 	for {
+		select {
+		case request := <-client_queue:
+			packet := request.Content
+			if state.simple && packet.Simple != nil {
+				fmt.Println("CLIENT MESSAGE", packet.Simple.Contents)
+				fmt.Println("PEERS", state)
+				go state.broadcast(
+					gossiper,
+					&lib.SimpleMessage{
+						OriginalName:  gossiper.Name,
+						RelayPeerAddr: gossiper.StringAddress,
+						Contents:      packet.Simple.Contents},
+					"")
+			}
+
+		case request := <-msg_queue:
+			packet := request.Content
+			if state.simple && packet.Simple != nil {
+				source_string := packet.Simple.RelayPeerAddr
+				fmt.Println("SIMPLE MESSAGE", packet.Simple)
+				state.addPeer(source_string)
+				fmt.Println("PEERS", state)
+				go state.broadcast(
+					gossiper,
+					&lib.SimpleMessage{
+						OriginalName:  packet.Simple.OriginalName,
+						RelayPeerAddr: gossiper.StringAddress,
+						Contents:      packet.Simple.Contents},
+					source_string)
+			}
+
+		case write := <-send_queue:
+			// should probably be removed, but ain't nobody got time for that
+			lib.SendPacket(gossiper.Conn, write)
+		}
 	}
 }

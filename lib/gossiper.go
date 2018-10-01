@@ -22,26 +22,30 @@ func (gossip *Gossiper) NewMsgId() uint32 {
 	return atomic.AddUint32(gossip.CurrentMsgId, 1)
 }
 
-func (gossip *Gossiper) ReceiveGossip() (*GossipPacket, *net.UDPAddr, error) {
+func (gossip *Gossiper) Receive(c NetChannel) error {
 	buffer := make([]byte, 65536)
 	bytes_read, address, err := gossip.Conn.ReadFromUDP(buffer)
 	fmt.Println(address)
 
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 	data := buffer[:bytes_read]
 	packet := &GossipPacket{}
 	err = protobuf.Decode(data, packet)
-	return packet, address, err
+	c <- Packet{Address: address, Content: packet}
+	return err
 }
 
-func (gossip *Gossiper) SendGossipTo(msg *GossipPacket, address *net.UDPAddr) (int, error) {
-	packetBytes, err := protobuf.Encode(msg)
-	if err != nil {
-		return -1, err
+func (gossip *Gossiper) ReceiveLoop(c NetChannel) {
+	for {
+		gossip.Receive(c)
 	}
-	return gossip.Conn.WriteToUDP(packetBytes, address)
+}
+
+func (gossip *Gossiper) SendPacket(msg *GossipPacket, address *net.UDPAddr, c NetChannel) {
+	c <- Packet{Address: address, Content: msg}
+	//return gossip.Conn.WriteToUDP(packetBytes, address)
 }
 
 func NewGossiper(address, name string) (*Gossiper, error) {

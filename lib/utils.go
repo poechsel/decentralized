@@ -23,6 +23,8 @@ func OpenPermanentConnection(address string) (*net.UDPConn, *net.UDPAddr, error)
 		return nil, nil, err
 	}
 	udpConn, err := net.ListenUDP("udp", udpAddr)
+	// TODO remove this line
+	udpConn.SetReadBuffer(1048576)
 	return udpConn, udpAddr, err
 }
 
