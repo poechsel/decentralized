@@ -117,18 +117,30 @@ func main() {
 	go gossiper.ReceiveLoop(msg_queue)
 	go client_server.ReceiveLoop(client_queue)
 
-	// infinite loop
-	for {
-		select {
-		case request := <-client_queue:
-			client_handler(state, gossiper, request)
-
-		case request := <-msg_queue:
-			server_handler(state, gossiper, request)
-
-		case write := <-send_queue:
-			// should probably be removed, but ain't nobody got time for that
-			lib.SendPacket(gossiper.Conn, write)
-		}
+	a := lib.NewSparseSequence()
+	lib.InsertSparseSequence(a, 0)
+	lib.InsertSparseSequence(a, 1)
+	for i := 0; i < 24; i++ {
+		lib.InsertSparseSequence(a, uint32(i))
 	}
+	for i := 24; i < 45; i++ {
+		lib.InsertSparseSequence(a, uint32(i))
+	}
+	lib.Print(a)
+	fmt.Println(lib.GetMinNotPresent(a))
+	/*
+		// infinite loop
+		for {
+			select {
+			case request := <-client_queue:
+				client_handler(state, gossiper, request)
+
+			case request := <-msg_queue:
+				server_handler(state, gossiper, request)
+
+			case write := <-send_queue:
+				// should probably be removed, but ain't nobody got time for that
+				lib.SendPacket(gossiper.Conn, write)
+			}
+		}*/
 }
