@@ -13,11 +13,16 @@ func NewMessageList() MessageList {
 	return MessageList{lock: &sync.RWMutex{}}
 }
 
-func (ml *MessageList) Insert(id uint32, msg string) {
+func (ml *MessageList) Insert(id uint32, msg string) bool {
 	ml.lock.Lock()
 	defer ml.lock.Unlock()
 
-	ml.content[id] = msg
+	if _, ok := ml.content[id]; ok {
+		return false
+	} else {
+		ml.content[id] = msg
+		return true
+	}
 }
 
 func (ml *MessageList) Get(id uint32) string {

@@ -19,9 +19,9 @@ func NewEntry() Entry {
 	return e
 }
 
-func (entry *Entry) Insert(id uint32, msg string) {
-	entry.messageList.Insert(id, msg)
+func (entry *Entry) Insert(id uint32, msg string) bool {
 	entry.sparseSequence.Insert(id)
+	return entry.messageList.Insert(id, msg)
 }
 
 type Database struct {
@@ -57,4 +57,17 @@ func (db *Database) GetMinNotPresent(name string) uint32 {
 	defer db.lock.RUnlock()
 
 	return db.entries[name].sparseSequence.GetMinNotPresent()
+}
+
+func (db *Database) GetPeerStatus() []PeerStatus {
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+
+	status := make([]PeerStatus, len(db.entries))
+
+	for name, entry := range db.entries {
+		next := entry.sparseSequence.GetMinNotPresent()
+		status = append(status, PeerStatus{Identifier: name, NextID: next})
+	}
+	return status
 }
