@@ -3,6 +3,7 @@ package lib
 import (
 	"fmt"
 	"strconv"
+	"sync"
 )
 
 /* consts. Each buckets holds 32 elements */
@@ -19,33 +20,45 @@ var lut = map[uint32]uint32{0x80000000: 32, 0x40000000: 31, 0x20000000: 30, 0x10
 	0x8: 4, 0x4: 3, 0x2: 2, 0x1: 1,
 	0: 0}
 
+type SparseSequence struct {
+	lock    *sync.RWMutex
+	content map[uint32]uint32
+}
+
 /* The goal of this datastructure is to split a sequence
 into buckets of 32 elements
 */
-func NewSparseSequence() map[uint32]uint32 {
-	return map[uint32]uint32{}
+func NewSparseSequence() SparseSequence {
+	return SparseSequence{lock: &sync.RWMutex{}, content: map[uint32]uint32{}}
 }
 
-func InsertSparseSequence(seq map[uint32]uint32, id uint32) {
+func (seq *SparseSequence) Insert(id uint32) {
 	bucket := uint32(id >> size_bits)
 	e := uint32(id & (bucket_size - 1))
 
 	new_element := uint32(1 << e)
-	if element, ok := seq[bucket]; ok {
+
+	seq.lock.Lock()
+	defer seq.lock.Unlock()
+
+	if element, ok := seq.content[bucket]; ok {
 		new_element = element | new_element
 	}
 
 	if new_element == full_bucket {
-		delete(seq, bucket)
+		delete(seq.content, bucket)
 	} else {
-		seq[bucket] = new_element
+		seq.content[bucket] = new_element
 	}
 }
 
-func GetMinNotPresent(seq map[uint32]uint32) uint32 {
+func (seq *SparseSequence) GetMinNotPresent() uint32 {
+	seq.lock.RLock()
+	defer seq.lock.RUnlock()
+
 	out := uint32(0xffffffff)
 	max_until_now := uint32(0)
-	for offset, bucket := range seq {
+	for offset, bucket := range seq.content {
 		if bucket != full_bucket {
 			rightmost_0 := uint32(^bucket & (bucket + 1))
 			fmt.Println("leftmost", strconv.FormatInt(int64(rightmost_0), 2))
@@ -66,8 +79,11 @@ func GetMinNotPresent(seq map[uint32]uint32) uint32 {
 	}
 }
 
-func Print(seq map[uint32]uint32) {
-	for offset, bucket := range seq {
+func (seq *SparseSequence) Print() {
+	seq.lock.RLock()
+	defer seq.lock.RUnlock()
+
+	for offset, bucket := range seq.content {
 		fmt.Println(offset, strconv.FormatInt(int64(bucket), 2))
 	}
 }

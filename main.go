@@ -118,16 +118,16 @@ func main() {
 	go client_server.ReceiveLoop(client_queue)
 
 	a := lib.NewSparseSequence()
-	lib.InsertSparseSequence(a, 0)
-	lib.InsertSparseSequence(a, 1)
+	a.InsertSparseSequence(0)
+	a.InsertSparseSequence(1)
 	for i := 0; i < 24; i++ {
-		lib.InsertSparseSequence(a, uint32(i))
+		a.InsertSparseSequence(uint32(i))
 	}
 	for i := 24; i < 45; i++ {
-		lib.InsertSparseSequence(a, uint32(i))
+		a.InsertSparseSequence(uint32(i))
 	}
-	lib.Print(a)
-	fmt.Println(lib.GetMinNotPresent(a))
+	a.Print()
+	fmt.Println(a.GetMinNotPresent())
 	/*
 		// infinite loop
 		for {
