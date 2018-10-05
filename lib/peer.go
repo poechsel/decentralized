@@ -9,7 +9,7 @@ import (
 type Peer struct {
 	Address        *net.UDPAddr
 	status_awaited uint32
-	status_channel chan *StatusPacket
+	Status_channel chan *StatusPacket
 	lock           *sync.Mutex
 }
 
@@ -39,7 +39,7 @@ func (peer *Peer) DispatchStatus(status *StatusPacket) bool {
 	// substract 1, see doc
 	if peer.status_awaited > 0 {
 		atomic.AddUint32(&peer.status_awaited, ^uint32(0))
-		peer.status_channel <- status
+		peer.Status_channel <- status
 		return true
 	} else {
 		return false

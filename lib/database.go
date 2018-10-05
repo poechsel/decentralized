@@ -33,6 +33,16 @@ func NewDatabase() Database {
 	return Database{lock: &sync.RWMutex{}}
 }
 
+func (db *Database) PossessRumorMessage(msg *RumorMessage) bool {
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+
+	if entry, ok := db.entries[msg.Origin]; ok {
+		return entry.messageList.Possess(msg.ID)
+	}
+	return false
+}
+
 func (db *Database) InsertRumorMessage(msg *RumorMessage) {
 	db.lock.Lock()
 	defer db.lock.Unlock()

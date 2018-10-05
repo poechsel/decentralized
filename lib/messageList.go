@@ -31,3 +31,11 @@ func (ml *MessageList) Get(id uint32) string {
 
 	return ml.content[id]
 }
+
+func (ml *MessageList) Possess(id uint32) bool {
+	ml.lock.RLock()
+	defer ml.lock.RUnlock()
+
+	_, ok := ml.content[id]
+	return ok
+}

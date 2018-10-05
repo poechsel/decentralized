@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"github.com/poechsel/Peerster/lib"
+	"math/rand"
 	"strings"
 	"sync"
+	"time"
 )
 
 func ignore(x interface{}) {
@@ -19,11 +21,34 @@ var msg_queue = make(lib.NetChannel)
 type State struct {
 	lock_peers  *sync.RWMutex
 	known_peers map[string]*lib.Peer
+	list_peers  []string
 	simple      bool
 	db          *lib.Database
 }
 
-func (state State) dispatchStatusToPeer(status *lib.StatusPacket) bool {
+func (state *State) getRandomPeer(avoid ...string) (string, *lib.Peer) {
+	state.lock_peers.RLock()
+	defer state.lock_peers.RUnlock()
+
+	n := len(state.list_peers)
+	for {
+		k := rand.Intn(n)
+		name := state.list_peers[k]
+		rejected := false
+		for _, x := range avoid {
+			if x == name {
+				rejected = true
+				break
+			}
+		}
+		if !rejected {
+			return name, state.known_peers[name]
+		}
+	}
+	return "", nil
+}
+
+func (state *State) dispatchStatusToPeer(status *lib.StatusPacket) bool {
 	state.lock_peers.RLock()
 	defer state.lock_peers.RUnlock()
 
@@ -35,7 +60,7 @@ func (state State) dispatchStatusToPeer(status *lib.StatusPacket) bool {
 	return false
 }
 
-func (state State) addPeer(address string) bool {
+func (state *State) addPeer(address string) bool {
 	state.lock_peers.Lock()
 	defer state.lock_peers.Unlock()
 	if _, ok := state.known_peers[address]; address == "" || ok {
@@ -44,12 +69,13 @@ func (state State) addPeer(address string) bool {
 		peer, err := lib.NewPeer(address)
 		if err == nil {
 			state.known_peers[address] = peer
+			state.list_peers = append(state.list_peers, address)
 		}
 		return true
 	}
 }
 
-func (state State) String() string {
+func (state *State) String() string {
 	state.lock_peers.RLock()
 	defer state.lock_peers.RUnlock()
 	fmt.Println("CALLED")
@@ -60,7 +86,7 @@ func (state State) String() string {
 	return strings.Join(keys, ",")
 }
 
-func (state State) broadcast(gossiper *lib.Gossiper, message *lib.SimpleMessage, avoid string) {
+func (state *State) broadcast(gossiper *lib.Gossiper, message *lib.SimpleMessage, avoid string) {
 	state.lock_peers.RLock()
 	defer state.lock_peers.RUnlock()
 	for addr, peer := range state.known_peers {
@@ -70,7 +96,7 @@ func (state State) broadcast(gossiper *lib.Gossiper, message *lib.SimpleMessage,
 	}
 }
 
-func client_handler(state State, server *lib.Gossiper, request lib.Packet) {
+func client_handler(state *State, server *lib.Gossiper, request lib.Packet) {
 	packet := request.Content
 	if state.simple && packet.Simple != nil {
 		fmt.Println("CLIENT MESSAGE", packet.Simple.Contents)
@@ -86,7 +112,7 @@ func client_handler(state State, server *lib.Gossiper, request lib.Packet) {
 
 }
 
-func server_handler(state State, server *lib.Gossiper, request lib.Packet) {
+func server_handler(state *State, server *lib.Gossiper, request lib.Packet) {
 	packet := request.Content
 	source_string := lib.StringOfAddr(request.Address)
 	go state.addPeer(source_string)
@@ -107,12 +133,50 @@ func server_handler(state State, server *lib.Gossiper, request lib.Packet) {
 			// anti entropy stuff
 		}
 	} else if packet.Rumor != nil {
-
+		go state.db.InsertRumorMessage(packet.Rumor)
+		if packet.Rumor.Origin != server.Name {
+			// oupsi, add the packet to the db
+			go handle_rumor(state, source_string, server, packet.Rumor)
+		}
 	}
+}
 
+func continue_rumormongering(state *State, address string, server *lib.Gossiper, rumor *lib.RumorMessage) {
+}
+
+func handle_rumor(state *State, address string, server *lib.Gossiper, rumor *lib.RumorMessage) {
+	if !state.db.PossessRumorMessage(rumor) {
+		rand_peer_address, rand_peer := state.getRandomPeer(address)
+
+		rand_peer.RequestStatus()
+		timer := time.NewTicker(1 * time.Second)
+
+		go func() {
+			select {
+			case <-timer.C:
+				go continue_rumormongering(state, address, server, rumor)
+			case ack := <-rand_peer.Status_channel:
+				addr, _ := lib.AddrOfString(rand_peer_address)
+				self_status := state.db.GetPeerStatus()
+				remote_status := ack.Want
+				order, diff_status := lib.CompareStatusVector(self_status, remote_status)
+				if order == lib.Status_Self_Knows_More {
+					content := state.db.GetMessageContent(diff_status.Identifier, diff_status.NextID)
+					message := lib.GossipPacket{Rumor: &lib.RumorMessage{Origin: diff_status.Identifier, ID: diff_status.NextID, Text: content}}
+					go server.SendPacket(&message, addr, send_queue)
+				} else if order == lib.Status_Remote_Knows_More {
+					message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
+					go server.SendPacket(&message, addr, send_queue)
+				} else {
+					go continue_rumormongering(state, address, server, rumor)
+				}
+			}
+		}()
+	}
 }
 
 func main() {
+	rand.Seed(time.Now().UTC().UnixNano())
 	client_port := flag.String("UIPort", "8080", "Port for the UI client")
 	gossip_addr := flag.String("gossipAddr", "127.0.0.1:5000", "ip:port for the gossiper")
 	gossip_name := flag.String("name", "", "name of the gossiper")
@@ -129,7 +193,7 @@ func main() {
 	lib.ExitIfError(err)
 
 	db := lib.NewDatabase()
-	state := State{
+	state := &State{
 		known_peers: make(map[string]*lib.Peer),
 		db:          &db,
 		simple:      *simple, lock_peers: &sync.RWMutex{}}
