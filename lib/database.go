@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -30,7 +31,7 @@ type Database struct {
 }
 
 func NewDatabase() Database {
-	return Database{lock: &sync.RWMutex{}}
+	return Database{lock: &sync.RWMutex{}, entries: make(map[string]Entry)}
 }
 
 func (db *Database) PossessRumorMessage(msg *RumorMessage) bool {
@@ -77,6 +78,7 @@ func (db *Database) GetPeerStatus() []PeerStatus {
 
 	for name, entry := range db.entries {
 		next := entry.sparseSequence.GetMinNotPresent()
+		fmt.Println("NEXTID: ", next)
 		status = append(status, PeerStatus{Identifier: name, NextID: next})
 	}
 	return status

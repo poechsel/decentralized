@@ -15,6 +15,14 @@ type StatusPacket struct {
 	Want []PeerStatus
 }
 
+func (s *StatusPacket) String() string {
+	acc := ""
+	for _, peer := range s.Want {
+		acc += "peer " + peer.Identifier + " nextID " + string(peer.NextID) + " "
+	}
+	return acc
+}
+
 type SimpleMessage struct {
 	OriginalName  string
 	RelayPeerAddr string

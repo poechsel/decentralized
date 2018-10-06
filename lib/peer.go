@@ -15,7 +15,7 @@ type Peer struct {
 
 func NewPeer(address string) (*Peer, error) {
 	a, err := AddrOfString(address)
-	return &Peer{Address: a}, err
+	return &Peer{Address: a, lock: &sync.Mutex{}}, err
 }
 
 func (peer *Peer) RequestStatus() {
