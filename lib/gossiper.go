@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"errors"
 	"fmt"
 	"github.com/dedis/protobuf"
 	"net"
@@ -44,6 +45,16 @@ func (gossip *Gossiper) ReceiveLoop(c NetChannel) {
 }
 
 func (gossip *Gossiper) SendPacket(msg *GossipPacket, address *net.UDPAddr, c NetChannel) {
+	if msg.Rumor != nil {
+		fmt.Println("Sending rumor to ", address)
+		if msg.Rumor.Text == "" {
+			_ = (errors.New("ztre"))
+
+		}
+	}
+	if msg.Status != nil {
+		fmt.Println("Sending status to ", address)
+	}
 	c <- Packet{Address: address, Content: msg}
 	//return gossip.Conn.WriteToUDP(packetBytes, address)
 }

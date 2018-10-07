@@ -1,5 +1,9 @@
 package lib
 
+import (
+	"fmt"
+)
+
 type RumorMessage struct {
 	Origin string
 	ID     uint32
@@ -18,7 +22,7 @@ type StatusPacket struct {
 func (s *StatusPacket) String() string {
 	acc := ""
 	for _, peer := range s.Want {
-		acc += "peer " + peer.Identifier + " nextID " + string(peer.NextID) + " "
+		acc += "peer " + peer.Identifier + " nextID " + fmt.Sprint(peer.NextID) + " "
 	}
 	return acc
 }

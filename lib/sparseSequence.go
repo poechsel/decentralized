@@ -21,15 +21,27 @@ var lut = map[uint32]uint32{0x80000000: 32, 0x40000000: 31, 0x20000000: 30, 0x10
 	0: 0}
 
 type SparseSequence struct {
-	lock    *sync.RWMutex
-	content map[uint32]uint32
+	lock        *sync.RWMutex
+	content     map[uint32]uint32
+	max_dropped uint32
 }
 
 /* The goal of this datastructure is to split a sequence
 into buckets of 32 elements
 */
 func NewSparseSequence() SparseSequence {
-	return SparseSequence{lock: &sync.RWMutex{}, content: map[uint32]uint32{}}
+	return SparseSequence{
+		lock:        &sync.RWMutex{},
+		content:     map[uint32]uint32{},
+		max_dropped: 0}
+}
+
+func max(a uint32, b uint32) uint32 {
+	if a > b {
+		return a
+	} else {
+		return b
+	}
 }
 
 func (seq *SparseSequence) Insert(id uint32) {
@@ -47,6 +59,7 @@ func (seq *SparseSequence) Insert(id uint32) {
 
 	if new_element == full_bucket {
 		delete(seq.content, bucket)
+		seq.max_dropped = max(bucket, (seq.max_dropped+1)*bucket_size)
 	} else {
 		seq.content[bucket] = new_element
 	}
@@ -56,12 +69,14 @@ func (seq *SparseSequence) GetMinNotPresent() uint32 {
 	seq.lock.RLock()
 	defer seq.lock.RUnlock()
 
+	if len(seq.content) == 0 {
+		return seq.max_dropped
+	}
 	out := uint32(0xffffffff)
 	max_until_now := uint32(0)
 	for offset, bucket := range seq.content {
 		if bucket != full_bucket {
 			rightmost_0 := uint32(^bucket & (bucket + 1))
-			fmt.Println("leftmost", strconv.FormatInt(int64(rightmost_0), 2))
 			log := lut[rightmost_0] - 1
 			index := offset*bucket_size + log
 			if index < out {

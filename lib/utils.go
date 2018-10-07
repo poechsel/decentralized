@@ -18,7 +18,6 @@ func StringOfAddr(addr *net.UDPAddr) string {
 
 func OpenPermanentConnection(address string) (*net.UDPConn, *net.UDPAddr, error) {
 	udpAddr, err := AddrOfString(address)
-	fmt.Println("Create gossip at ADDRESS: ", udpAddr)
 	if err != nil {
 		return nil, nil, err
 	}

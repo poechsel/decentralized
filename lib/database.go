@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -47,6 +48,9 @@ func (db *Database) PossessRumorMessage(msg *RumorMessage) bool {
 func (db *Database) InsertRumorMessage(msg *RumorMessage) {
 	db.lock.Lock()
 	defer db.lock.Unlock()
+	if msg.Text == "" {
+		panic(errors.New("oupsi"))
+	}
 	if entry, ok := db.entries[msg.Origin]; ok {
 		entry.Insert(msg.ID, msg.Text)
 	} else {
@@ -74,7 +78,7 @@ func (db *Database) GetPeerStatus() []PeerStatus {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
-	status := make([]PeerStatus, len(db.entries))
+	var status []PeerStatus
 
 	for name, entry := range db.entries {
 		next := entry.sparseSequence.GetMinNotPresent()
