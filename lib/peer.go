@@ -1,7 +1,6 @@
 package lib
 
 import (
-	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -36,18 +35,12 @@ func (peer *Peer) CancelRequestStatus() {
 }
 
 func (peer *Peer) DispatchStatus(status *StatusPacket) bool {
-	fmt.Println("waiting for lock")
 	peer.lock.Lock()
-	fmt.Println("YES")
 	defer peer.lock.Unlock()
 	// substract 1, see doc
-	fmt.Println("YES")
 	if peer.status_awaited > 0 {
-		fmt.Println("YES")
 		atomic.AddUint32(&peer.status_awaited, ^uint32(0))
-		fmt.Println("trying to send")
 		peer.Status_channel <- status
-		fmt.Println("send success")
 		return true
 	} else {
 		return false

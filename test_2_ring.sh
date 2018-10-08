@@ -216,9 +216,11 @@ do
     msgLine2="FLIPPED COIN sending rumor to 127.0.0.1:$nextPort"
 
     if !(grep -q "$msgLine1" "${outputFiles[$i]}") ; then
+        echo "${outputFiles[$i]} => $msgLine1"
         failed="T"
     fi
     if !(grep -q "$msgLine2" "${outputFiles[$i]}") ; then
+        echo "${outputFiles[$i]} => $msgLine2"
         failed="T"
     fi
 	gossipPort=$(($gossipPort+1))

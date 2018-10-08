@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/poechsel/Peerster/lib"
-	"log"
 	"math/rand"
 	"strings"
 	"sync"
@@ -51,18 +50,15 @@ func (state *State) getRandomPeer(avoid ...string) (string, *lib.Peer, error) {
 	return name, state.known_peers[name], nil
 }
 
-func (state *State) dispatchStatusToPeer(status *lib.StatusPacket) bool {
+func (state *State) dispatchStatusToPeer(address string, status *lib.StatusPacket) bool {
 	state.lock_peers.RLock()
 	defer state.lock_peers.RUnlock()
 
-	fmt.Println("dispatch status")
-	for _, peer := range state.known_peers {
+	if peer, ok := state.known_peers[address]; ok {
 		if peer.DispatchStatus(status) {
-			fmt.Println("dispatching success")
 			return true
 		}
 	}
-	fmt.Println("dispatching failure")
 	return false
 }
 
@@ -136,7 +132,7 @@ func server_handler(state *State, server *lib.Gossiper, request lib.Packet) {
 	}
 	if packet.Simple != nil {
 		fmt.Println("SIMPLE MESSAGE", packet.Simple)
-		go state.broadcast(
+		state.broadcast(
 			server,
 			&lib.SimpleMessage{
 				OriginalName:  packet.Simple.OriginalName,
@@ -147,9 +143,9 @@ func server_handler(state *State, server *lib.Gossiper, request lib.Packet) {
 		fmt.Println("STATUS from", source_string, packet.Status)
 		// a status message can either be dispatched and use as an ack
 		// or in the negative be used directly here
-		if !state.dispatchStatusToPeer(packet.Status) {
+		if !state.dispatchStatusToPeer(source_string, packet.Status) {
 			fmt.Println("status used normally")
-			handle_status(state, source_string, server, packet.Status.Want)
+			handle_status(state, source_string, server, packet.Status.Want, 0)
 		} else {
 			fmt.Println("status used as an ack")
 		}
@@ -159,7 +155,7 @@ func server_handler(state *State, server *lib.Gossiper, request lib.Packet) {
 			source_string, "ID",
 			packet.Rumor.ID, "contents",
 			packet.Rumor.Text)
-		go handle_rumor(state, source_string, server, packet.Rumor)
+		handle_rumor(state, source_string, server, packet.Rumor)
 	}
 	fmt.Println("PEERS", state)
 }
@@ -171,36 +167,35 @@ func continue_rumormongering(state *State, address string, server *lib.Gossiper,
 		if err != nil {
 			return
 		}
-		log.Println("FLIPPED COIN sending rumor to", random_addr)
 		fmt.Println("FLIPPED COIN sending rumor to", random_addr)
 		addr, _ := lib.AddrOfString(random_addr)
 		fmt.Println("MONGERING with", addr)
-		go server.SendPacket(&lib.GossipPacket{Rumor: rumor}, addr, send_queue)
+		server.SendPacket(&lib.GossipPacket{Rumor: rumor}, addr, send_queue)
 	} else {
 		// stop mongering
 		return
 	}
 }
 
-func handle_status(state *State, address string, server *lib.Gossiper, remote_status []lib.PeerStatus) bool {
+func handle_status(state *State, address string, server *lib.Gossiper, remote_status []lib.PeerStatus, why int) bool {
 	addr, _ := lib.AddrOfString(address)
 	self_status := state.db.GetPeerStatus()
 	order, diff_status := lib.CompareStatusVector(self_status, remote_status)
 	if order == lib.Status_Self_Knows_More {
 		content := state.db.GetMessageContent(diff_status.Identifier, diff_status.NextID)
-		if content == "" {
-			panic(errors.New("empty content"))
-		}
 		fmt.Println("MONGERING with", addr)
 		message := lib.GossipPacket{Rumor: &lib.RumorMessage{Origin: diff_status.Identifier, ID: diff_status.NextID, Text: content}}
-		go server.SendPacket(&message, addr, send_queue)
+		server.SendPacket(&message, addr, send_queue)
 		return true
 	} else if order == lib.Status_Remote_Knows_More {
 		message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
-		go server.SendPacket(&message, addr, send_queue)
+		server.SendPacket(&message, addr, send_queue)
 		return true
 	} else {
-		fmt.Println("IN SYNC with", address)
+		if why == 1 {
+			//	log.Println("IN SYNC WITH", address)
+		}
+		fmt.Println("IN SYNC WITH", address)
 		return false
 	}
 }
@@ -214,32 +209,34 @@ func handle_rumor(state *State, sender_addr_string string, server *lib.Gossiper,
 	server.SendPacket(&message, sender_addr, send_queue)
 
 	if !state.db.PossessRumorMessage(rumor) {
+		// TODO remove that
+		if state.db.GetMinNotPresent(rumor.Origin) != rumor.ID {
+			return
+		}
 		state.db.InsertRumorMessage(rumor)
 		rand_peer_address, rand_peer, err := state.getRandomPeer(sender_addr_string)
 		if err != nil {
-			go continue_rumormongering(state, sender_addr_string, server, rumor)
+			continue_rumormongering(state, sender_addr_string, server, rumor)
 		} else {
 			addr, _ := lib.AddrOfString(rand_peer_address)
 			server.SendPacket(&lib.GossipPacket{Rumor: rumor}, addr, send_queue)
 			rand_peer.RequestStatus()
-			timer := time.NewTicker(10 * time.Second)
+			timer := time.NewTicker(time.Second)
 
-			go func() {
-				select {
-				case <-timer.C:
-					timer.Stop()
-					go continue_rumormongering(state, sender_addr_string, server, rumor)
-				case ack := <-rand_peer.Status_channel:
-					fmt.Println("Got Ack!")
-					go func() {
-						if !handle_status(state, rand_peer_address, server, ack.Want) {
-							log.Println("yes")
-							continue_rumormongering(state, sender_addr_string, server, rumor)
-						}
-					}()
+			select {
+			case <-timer.C:
+				rand_peer.CancelRequestStatus()
+				timer.Stop()
+				continue_rumormongering(state, sender_addr_string, server, rumor)
+			case ack := <-rand_peer.Status_channel:
+				if !handle_status(state, rand_peer_address, server, ack.Want, 1) {
+					continue_rumormongering(state, sender_addr_string, server, rumor)
 				}
-			}()
+			}
 		}
+	} else {
+
+		continue_rumormongering(state, sender_addr_string, server, rumor)
 	}
 }
 
@@ -274,21 +271,19 @@ func main() {
 	go gossiper.ReceiveLoop(msg_queue)
 	go client_server.ReceiveLoop(client_queue)
 
-	/*
-		go func() {
-			ticker := time.NewTicker(1 * time.Second)
-			for {
-				select {
-				case <-ticker.C:
-					rand_peer_address, _ := state.getRandomPeer()
-					addr, _ := lib.AddrOfString(rand_peer_address)
-					self_status := state.db.GetPeerStatus()
-					message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
-					go gossiper.SendPacket(&message, addr, send_queue)
-				}
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				rand_peer_address, _, _ := state.getRandomPeer()
+				addr, _ := lib.AddrOfString(rand_peer_address)
+				self_status := state.db.GetPeerStatus()
+				message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
+				gossiper.SendPacket(&message, addr, send_queue)
 			}
-		}()
-	*/
+		}
+	}()
 
 	/*a := lib.NewSparseSequence()
 	a.Insert(0)
@@ -306,10 +301,10 @@ func main() {
 	for {
 		select {
 		case request := <-client_queue:
-			client_handler(state, gossiper, request)
+			go client_handler(state, gossiper, request)
 
 		case request := <-msg_queue:
-			server_handler(state, gossiper, request)
+			go server_handler(state, gossiper, request)
 
 		case write := <-send_queue:
 			// should probably be removed, but ain't nobody got time for that

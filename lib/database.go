@@ -71,6 +71,10 @@ func (db *Database) GetMinNotPresent(name string) uint32 {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
+	if _, ok := db.entries[name]; !ok {
+		return uint32(1)
+	}
+
 	return db.entries[name].sparseSequence.GetMinNotPresent()
 }
 
