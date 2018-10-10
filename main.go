@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/gorilla/mux"
 	"github.com/poechsel/Peerster/lib"
 	"math/rand"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -19,12 +22,24 @@ var send_queue = make(lib.NetChannel)
 var client_queue = make(lib.NetChannel)
 var msg_queue = make(lib.NetChannel)
 
+type PeerId struct {
+	Address string
+	Name    string
+}
+
+type Message struct {
+	Address string
+	Rumor   lib.RumorMessage
+}
+
 type State struct {
-	lock_peers  *sync.RWMutex
-	known_peers map[string]*lib.Peer
-	list_peers  []string
-	simple      bool
-	db          *lib.Database
+	lock_peers         *sync.RWMutex
+	known_peers        map[string]*lib.Peer
+	list_peers         []string
+	simple             bool
+	db                 *lib.Database
+	addMessageChannels [](chan Message)
+	addPeerChannels    [](chan string)
 }
 
 func (state *State) getRandomPeer(avoid ...string) (string, *lib.Peer, error) {
@@ -50,6 +65,13 @@ func (state *State) getRandomPeer(avoid ...string) (string, *lib.Peer, error) {
 	return name, state.known_peers[name], nil
 }
 
+func (state *State) AddNewPeerCallback(c chan string) {
+	state.addPeerChannels = append(state.addPeerChannels, c)
+}
+func (state *State) AddNewMessageCallback(c chan Message) {
+	state.addMessageChannels = append(state.addMessageChannels, c)
+}
+
 func (state *State) dispatchStatusToPeer(address string, status *lib.StatusPacket) bool {
 	state.lock_peers.RLock()
 	defer state.lock_peers.RUnlock()
@@ -72,6 +94,9 @@ func (state *State) addPeer(address string) bool {
 		if err == nil {
 			state.known_peers[address] = peer
 			state.list_peers = append(state.list_peers, address)
+			for _, c := range state.addPeerChannels {
+				c <- address
+			}
 		}
 		return true
 	}
@@ -214,6 +239,10 @@ func handle_rumor(state *State, sender_addr_string string, server *lib.Gossiper,
 			return
 		}
 		state.db.InsertRumorMessage(rumor)
+		for _, c := range state.addMessageChannels {
+			c <- Message{Rumor: *rumor, Address: sender_addr_string}
+		}
+
 		rand_peer_address, rand_peer, err := state.getRandomPeer(sender_addr_string)
 		if err != nil {
 			continue_rumormongering(state, sender_addr_string, server, rumor)
@@ -240,6 +269,82 @@ func handle_rumor(state *State, sender_addr_string string, server *lib.Gossiper,
 	}
 }
 
+type WebServer struct {
+	server            *http.Server
+	AddPeerChannel    chan string
+	AddMessageChannel chan Message
+	messages_lock     *sync.RWMutex
+	messages          []Message
+	peers_lock        *sync.RWMutex
+	peers             []string
+	nameServer        string
+}
+
+func NewWebServer(address string, name string) *WebServer {
+	r := mux.NewRouter()
+
+	srv := &http.Server{
+		Handler: r,
+		Addr:    address,
+		// Good practice: enforce timeouts for servers you create!
+		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  15 * time.Second,
+	}
+	websrv := &WebServer{server: srv,
+		nameServer:        name,
+		messages:          []Message{},
+		peers:             []string{},
+		AddPeerChannel:    make(chan string, 64),
+		AddMessageChannel: make(chan Message, 64),
+		messages_lock:     &sync.RWMutex{},
+		peers_lock:        &sync.RWMutex{},
+	}
+
+	go func() {
+		for {
+			select {
+			case peer := <-websrv.AddPeerChannel:
+				websrv.peers_lock.Lock()
+				websrv.peers = append(websrv.peers, peer)
+				websrv.peers_lock.Unlock()
+			case msg := <-websrv.AddMessageChannel:
+				websrv.messages_lock.Lock()
+				websrv.messages = append(websrv.messages, msg)
+				websrv.messages_lock.Unlock()
+			}
+		}
+	}()
+
+	r.HandleFunc("/id",
+		func(w http.ResponseWriter, _ *http.Request) {
+			b, _ := json.Marshal(name)
+			w.Write(b)
+		}).Methods("GET")
+
+	r.HandleFunc("/node",
+		func(w http.ResponseWriter, _ *http.Request) {
+			websrv.peers_lock.RLock()
+			defer websrv.peers_lock.RUnlock()
+			b, _ := json.Marshal(websrv.peers)
+			w.Write(b)
+		}).Methods("GET")
+
+	r.HandleFunc("/message",
+		func(w http.ResponseWriter, _ *http.Request) {
+			websrv.messages_lock.Lock()
+			defer websrv.messages_lock.Unlock()
+			b, _ := json.Marshal(websrv.messages)
+			w.Write(b)
+			websrv.messages = []Message{}
+		}).Methods("GET")
+
+	return websrv
+}
+
+func (srv *WebServer) Start() error {
+	return srv.server.ListenAndServe()
+}
+
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	client_port := flag.String("UIPort", "8080", "Port for the UI client")
@@ -255,8 +360,7 @@ func main() {
 	fmt.Println("LISTENING ON: ", *gossip_addr)
 	lib.ExitIfError(err)
 
-	client_server, err := lib.NewGossiper("127.0.0.1:"+*client_port, "client")
-	lib.ExitIfError(err)
+	client_url := "127.0.0.1:" + *client_port
 
 	db := lib.NewDatabase()
 	state := &State{
@@ -264,23 +368,35 @@ func main() {
 		db:          &db,
 		simple:      *simple, lock_peers: &sync.RWMutex{}}
 
+	if *client_port != "8080" {
+		client_server, err := lib.NewGossiper(client_url, "client")
+		lib.ExitIfError(err)
+		go client_server.ReceiveLoop(client_queue)
+	} else {
+		web := NewWebServer(client_url, *gossip_name)
+		state.AddNewMessageCallback(web.AddMessageChannel)
+		state.AddNewPeerCallback(web.AddPeerChannel)
+		go web.Start()
+	}
+
 	for _, peer_addr := range peers_list {
 		state.addPeer(peer_addr)
 	}
 
 	go gossiper.ReceiveLoop(msg_queue)
-	go client_server.ReceiveLoop(client_queue)
 
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		for {
 			select {
 			case <-ticker.C:
-				rand_peer_address, _, _ := state.getRandomPeer()
-				addr, _ := lib.AddrOfString(rand_peer_address)
-				self_status := state.db.GetPeerStatus()
-				message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
-				gossiper.SendPacket(&message, addr, send_queue)
+				rand_peer_address, _, err := state.getRandomPeer()
+				if err == nil {
+					addr, _ := lib.AddrOfString(rand_peer_address)
+					self_status := state.db.GetPeerStatus()
+					message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
+					gossiper.SendPacket(&message, addr, send_queue)
+				}
 			}
 		}
 	}()

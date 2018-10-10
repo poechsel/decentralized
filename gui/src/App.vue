@@ -10,7 +10,7 @@
     </b-navbar-nav>
   </b-navbar>
   <!-- HelloWorld msg="Welcome to Your Vue.js App"/-->
-  <b-container class="bv-example-row">
+  <b-container class="bv-example-row mb-3">
     <b-row>
       <b-col cols="8">
         <b-card header="Messages" style="height: 600px;" body-class="ovbody">
