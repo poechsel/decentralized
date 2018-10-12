@@ -85,7 +85,7 @@ func (state *State) dispatchStatusToPeer(address string, status *lib.StatusPacke
 	return false
 }
 
-func (state *State) addPeer(address string) bool {
+func (state *State) AddPeer(address string) bool {
 	state.lock_peers.Lock()
 	defer state.lock_peers.Unlock()
 	if _, ok := state.known_peers[address]; ok || address == "" {
@@ -154,7 +154,7 @@ func server_handler(state *State, server *lib.Gossiper, request lib.Packet) {
 	packet := request.Content
 	source_string := lib.StringOfAddr(request.Address)
 	if source_string != server.StringAddress {
-		go state.addPeer(source_string)
+		go state.AddPeer(source_string)
 	}
 	if packet.Simple != nil {
 		fmt.Println("SIMPLE MESSAGE", packet.Simple)
@@ -229,13 +229,12 @@ func handle_status(state *State, address string, server *lib.Gossiper, remote_st
 	}
 }
 
-func handle_rumor(state *State, sender_addr_string string, server *lib.Gossiper, rumor *lib.RumorMessage) {
-
+func (state *State) addRumorMessage(rumor *lib.RumorMessage, sender_addr_string string) bool {
 	if !state.db.PossessRumorMessage(rumor) {
 
 		// TODO remove that
 		if state.db.GetMinNotPresent(rumor.Origin) != rumor.ID {
-			return
+			return false
 		}
 
 		state.db.InsertRumorMessage(rumor)
@@ -243,13 +242,25 @@ func handle_rumor(state *State, sender_addr_string string, server *lib.Gossiper,
 		for _, c := range state.addMessageChannels {
 			c <- Message{Rumor: *rumor, Address: sender_addr_string}
 		}
+		return true
+	} else {
+		return false
+	}
+}
 
-		// send the ack
+func handle_rumor(state *State, sender_addr_string string, server *lib.Gossiper, rumor *lib.RumorMessage) {
+
+	message_added := state.addRumorMessage(rumor, sender_addr_string)
+
+	// send the ack
+	if sender_addr_string != server.Address.String() {
 		sender_addr, _ := lib.AddrOfString(sender_addr_string)
 		self_status := state.db.GetPeerStatus()
 		message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
 		server.SendPacket(&message, sender_addr, send_queue)
+	}
 
+	if message_added {
 		rand_peer_address, rand_peer, err := state.getRandomPeer(sender_addr_string)
 		if err != nil {
 			continue_rumormongering(state, sender_addr_string, server, rumor)
@@ -271,15 +282,6 @@ func handle_rumor(state *State, sender_addr_string string, server *lib.Gossiper,
 				}
 			}
 		}
-	} else {
-
-		sender_addr, _ := lib.AddrOfString(sender_addr_string)
-		self_status := state.db.GetPeerStatus()
-		// send the ack
-		message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
-		server.SendPacket(&message, sender_addr, send_queue)
-
-		//		continue_rumormongering(state, sender_addr_string, server, rumor)
 	}
 }
 
@@ -294,7 +296,7 @@ type WebServer struct {
 	nameServer        string
 }
 
-func NewWebServer(address string, name string) *WebServer {
+func NewWebServer(state *State, server *lib.Gossiper, address string, name string) *WebServer {
 	r := mux.NewRouter()
 
 	srv := &http.Server{
@@ -331,13 +333,25 @@ func NewWebServer(address string, name string) *WebServer {
 
 	r.HandleFunc("/node",
 		func(_ http.ResponseWriter, r *http.Request) {
-			/*
-				data := make([]byte, r.ContentLength)
-				_, _ := r.Body.Reader.Read(r.Body, data)
-				var content string
-				json.Unmarshal(r.Body, content, &content)
-				fmt.Println(content)
-			*/
+			data := make([]byte, r.ContentLength)
+			r.Body.Read(data)
+			var peer string
+			json.Unmarshal(data, peer)
+			state.AddPeer(peer)
+			fmt.Println(peer)
+		})
+
+	r.HandleFunc("/message",
+		func(_ http.ResponseWriter, r *http.Request) {
+			data := make([]byte, r.ContentLength)
+			r.Body.Read(data)
+			var message string
+			json.Unmarshal(data, message)
+			rumor := lib.RumorMessage{
+				Origin: server.Name,
+				ID:     server.NewMsgId(),
+				Text:   message}
+			handle_rumor(state, server.Address.String(), server, &rumor)
 		})
 
 	r.HandleFunc("/id",
@@ -398,14 +412,14 @@ func main() {
 		lib.ExitIfError(err)
 		go client_server.ReceiveLoop(client_queue)
 	} else {
-		web := NewWebServer(client_url, *gossip_name)
+		web := NewWebServer(state, gossiper, client_url, *gossip_name)
 		state.AddNewMessageCallback(web.AddMessageChannel)
 		state.AddNewPeerCallback(web.AddPeerChannel)
 		go web.Start()
 	}
 
 	for _, peer_addr := range peers_list {
-		state.addPeer(peer_addr)
+		state.AddPeer(peer_addr)
 	}
 
 	go gossiper.ReceiveLoop(msg_queue)
