@@ -221,6 +221,8 @@ func handle_status(state *State, address string, server *lib.Gossiper, remote_st
 	} else {
 		if why == 1 {
 			log.Println("IN SYNC WITH", address)
+		} else {
+			log.Println("ARGH")
 		}
 		fmt.Println("IN SYNC WITH", address)
 		return false
@@ -408,21 +410,23 @@ func main() {
 
 	go gossiper.ReceiveLoop(msg_queue)
 
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		for {
-			select {
-			case <-ticker.C:
-				rand_peer_address, _, err := state.getRandomPeer()
-				if err == nil {
-					addr, _ := lib.AddrOfString(rand_peer_address)
-					self_status := state.db.GetPeerStatus()
-					message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
-					gossiper.SendPacket(&message, addr, send_queue)
+	if !state.simple {
+		go func() {
+			ticker := time.NewTicker(time.Second)
+			for {
+				select {
+				case <-ticker.C:
+					rand_peer_address, _, err := state.getRandomPeer()
+					if err == nil {
+						addr, _ := lib.AddrOfString(rand_peer_address)
+						self_status := state.db.GetPeerStatus()
+						message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
+						gossiper.SendPacket(&message, addr, send_queue)
+					}
 				}
 			}
-		}
-	}()
+		}()
+	}
 	/*a := lib.NewSparseSequence()
 	a.Insert(0)
 	a.Insert(1)
