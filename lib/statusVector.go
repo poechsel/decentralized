@@ -29,7 +29,7 @@ func util_compare(m_self map[string]uint32, m_remote map[string]uint32) (int, *P
 			}
 		} else {
 			// I have more knowledge than the other as I know a peer he doesn't
-			return Status_Self_Knows_More, &PeerStatus{Identifier: name, NextID: id_self - 1}
+			return Status_Self_Knows_More, &PeerStatus{Identifier: name, NextID: 1}
 
 		}
 	}

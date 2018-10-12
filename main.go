@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/poechsel/Peerster/lib"
+	"log"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -169,10 +170,10 @@ func server_handler(state *State, server *lib.Gossiper, request lib.Packet) {
 		// a status message can either be dispatched and use as an ack
 		// or in the negative be used directly here
 		if !state.dispatchStatusToPeer(source_string, packet.Status) {
-			fmt.Println("status used normally")
+			log.Println(server.Name, "status used normally")
 			handle_status(state, source_string, server, packet.Status.Want, 0)
 		} else {
-			fmt.Println("status used as an ack")
+			log.Println(server.Name, "status used as an ack")
 		}
 	} else if packet.Rumor != nil {
 		fmt.Println("RUMOR origin",
@@ -187,6 +188,7 @@ func server_handler(state *State, server *lib.Gossiper, request lib.Packet) {
 
 func continue_rumormongering(state *State, address string, server *lib.Gossiper, rumor *lib.RumorMessage) {
 	decision := rand.Int() % 2
+	//decision := 1
 	if decision == 1 {
 		random_addr, _, err := state.getRandomPeer(address)
 		if err != nil {
@@ -218,7 +220,7 @@ func handle_status(state *State, address string, server *lib.Gossiper, remote_st
 		return true
 	} else {
 		if why == 1 {
-			//	log.Println("IN SYNC WITH", address)
+			log.Println("IN SYNC WITH", address)
 		}
 		fmt.Println("IN SYNC WITH", address)
 		return false
@@ -226,22 +228,25 @@ func handle_status(state *State, address string, server *lib.Gossiper, remote_st
 }
 
 func handle_rumor(state *State, sender_addr_string string, server *lib.Gossiper, rumor *lib.RumorMessage) {
-	sender_addr, _ := lib.AddrOfString(sender_addr_string)
-	self_status := state.db.GetPeerStatus()
-
-	// send the ack
-	message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
-	server.SendPacket(&message, sender_addr, send_queue)
 
 	if !state.db.PossessRumorMessage(rumor) {
+
 		// TODO remove that
 		if state.db.GetMinNotPresent(rumor.Origin) != rumor.ID {
 			return
 		}
+
 		state.db.InsertRumorMessage(rumor)
+
 		for _, c := range state.addMessageChannels {
 			c <- Message{Rumor: *rumor, Address: sender_addr_string}
 		}
+
+		// send the ack
+		sender_addr, _ := lib.AddrOfString(sender_addr_string)
+		self_status := state.db.GetPeerStatus()
+		message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
+		server.SendPacket(&message, sender_addr, send_queue)
 
 		rand_peer_address, rand_peer, err := state.getRandomPeer(sender_addr_string)
 		if err != nil {
@@ -251,6 +256,7 @@ func handle_rumor(state *State, sender_addr_string string, server *lib.Gossiper,
 			server.SendPacket(&lib.GossipPacket{Rumor: rumor}, addr, send_queue)
 			rand_peer.RequestStatus()
 			timer := time.NewTicker(time.Second)
+			log.Println(server.Name, "Waiting for an ack")
 
 			select {
 			case <-timer.C:
@@ -265,7 +271,13 @@ func handle_rumor(state *State, sender_addr_string string, server *lib.Gossiper,
 		}
 	} else {
 
-		continue_rumormongering(state, sender_addr_string, server, rumor)
+		sender_addr, _ := lib.AddrOfString(sender_addr_string)
+		self_status := state.db.GetPeerStatus()
+		// send the ack
+		message := lib.GossipPacket{Status: &lib.StatusPacket{Want: self_status}}
+		server.SendPacket(&message, sender_addr, send_queue)
+
+		//		continue_rumormongering(state, sender_addr_string, server, rumor)
 	}
 }
 
@@ -314,6 +326,17 @@ func NewWebServer(address string, name string) *WebServer {
 			}
 		}
 	}()
+
+	r.HandleFunc("/node",
+		func(_ http.ResponseWriter, r *http.Request) {
+			/*
+				data := make([]byte, r.ContentLength)
+				_, _ := r.Body.Reader.Read(r.Body, data)
+				var content string
+				json.Unmarshal(r.Body, content, &content)
+				fmt.Println(content)
+			*/
+		})
 
 	r.HandleFunc("/id",
 		func(w http.ResponseWriter, _ *http.Request) {
@@ -400,7 +423,6 @@ func main() {
 			}
 		}
 	}()
-
 	/*a := lib.NewSparseSequence()
 	a.Insert(0)
 	a.Insert(1)
