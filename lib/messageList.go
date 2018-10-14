@@ -39,3 +39,7 @@ func (ml *MessageList) Possess(id uint32) bool {
 	_, ok := ml.content[id]
 	return ok
 }
+
+func (ml *MessageList) NextId() uint32 {
+	return uint32(len(ml.content)) + 1
+}

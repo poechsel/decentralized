@@ -178,18 +178,23 @@ do
 	msgLine5="peer G nextID 2"	
 
 	if !(grep -q "$msgLine1" "${outputFiles[$i]}") ; then
+        echo "${outputFiles[$i]} => $msgLine1"
         failed="T"
     fi
     if !(grep -q "$msgLine2" "${outputFiles[$i]}") ; then
+        echo "${outputFiles[$i]} => $msgLine2"
         failed="T"
     fi
     if !(grep -q "$msgLine3" "${outputFiles[$i]}") ; then
+        echo "${outputFiles[$i]} => $msgLine3"
         failed="T"
     fi
     if !(grep -q "$msgLine4" "${outputFiles[$i]}") ; then
+        echo "${outputFiles[$i]} => $msgLine4"
         failed="T"
     fi
     if !(grep -q "$msgLine5" "${outputFiles[$i]}") ; then
+        echo "${outputFiles[$i]} => $msgLine5"
         failed="T"
     fi
 	gossipPort=$(($gossipPort+1))
