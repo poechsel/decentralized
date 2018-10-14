@@ -19,3 +19,17 @@ Make sure you got `npm` installed. Then to install the dependencies execute `npm
 
 Both the peerster and the client are used as presented in the homework.
 To use the **graphical frontend** you need to launch the peerster with a `UIPort` of `8080`. The peerster will automatically launch the server, and you will be able to access to the frontend on`http://127.0.0.1:8080`.
+
+
+## Code architecture
+
+The code is divided in several parts:
+
+- `gui/src`: code for the frontend using vue.js
+- `main.go`: main entrypoint for peerster
+- `client/`: client's code
+- `lib/`: contains every abstraction used to implement peerster. In particular:
+    - `gossiper.go`: the main logic of the protocol
+    * `state.go`: a set of methods action on `State`, a structure representing the world known to a local peerster
+    - `webserver.go`: the webserver for the frontend
+    - `sparseSequence.go`: a datastructure to answer quickly to query of the type "which is the first non present element in a sequence". Discarded because I wrote it while non fully understanding the subject.
