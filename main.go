@@ -28,7 +28,7 @@ func main() {
 
 	peers_list := strings.Split(*peers_param, ",")
 
-	gossiper, err := lib.NewGossiper(*gossip_addr, "oechsel::"+*gossip_name, *simple)
+	gossiper, err := lib.NewGossiper(*gossip_addr, *gossip_name, *simple)
 	fmt.Println("LISTENING ON: ", *gossip_addr)
 	lib.ExitIfError(err)
 

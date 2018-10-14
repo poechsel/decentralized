@@ -9,8 +9,8 @@ type MessageList struct {
 	content map[uint32]string
 }
 
-func NewMessageList() MessageList {
-	return MessageList{lock: &sync.RWMutex{}, content: make(map[uint32]string)}
+func NewMessageList() *MessageList {
+	return &MessageList{lock: &sync.RWMutex{}, content: make(map[uint32]string)}
 }
 
 func (ml *MessageList) Insert(id uint32, msg string) bool {
