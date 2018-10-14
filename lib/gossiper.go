@@ -20,6 +20,7 @@ type Gossiper struct {
 
 /* return elements starting at 1 as it returns the new value */
 func (gossip *Gossiper) NewMsgId() uint32 {
+	fmt.Println("new msg id", gossip.CurrentMsgId)
 	return atomic.AddUint32(gossip.CurrentMsgId, 1)
 }
 

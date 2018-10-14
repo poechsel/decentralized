@@ -331,51 +331,54 @@ func NewWebServer(state *State, server *lib.Gossiper, address string, name strin
 		}
 	}()
 
+	type ServerId struct {
+		Name    string
+		Address string
+	}
+
 	r.HandleFunc("/node",
 		func(_ http.ResponseWriter, r *http.Request) {
-			data := make([]byte, r.ContentLength)
-			r.Body.Read(data)
 			var peer string
-			json.Unmarshal(data, peer)
+			json.NewDecoder(r.Body).Decode(&peer)
+			fmt.Println("Peer:", peer, "<=", r.Body)
 			state.AddPeer(peer)
-			fmt.Println(peer)
-		})
+			fmt.Println("RECOUOU3,", peer)
+		}).Methods("POST")
 
 	r.HandleFunc("/message",
 		func(_ http.ResponseWriter, r *http.Request) {
-			data := make([]byte, r.ContentLength)
-			r.Body.Read(data)
 			var message string
-			json.Unmarshal(data, message)
+			json.NewDecoder(r.Body).Decode(&message)
 			rumor := lib.RumorMessage{
 				Origin: server.Name,
 				ID:     server.NewMsgId(),
 				Text:   message}
 			handle_rumor(state, server.Address.String(), server, &rumor)
-		})
+		}).Methods("POST")
 
 	r.HandleFunc("/id",
 		func(w http.ResponseWriter, _ *http.Request) {
-			b, _ := json.Marshal(name)
-			w.Write(b)
+			e := ServerId{Name: server.Name, Address: server.Address.String()}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(e)
 		}).Methods("GET")
 
+	fmt.Println("server started")
 	r.HandleFunc("/node",
 		func(w http.ResponseWriter, _ *http.Request) {
 			websrv.peers_lock.RLock()
 			defer websrv.peers_lock.RUnlock()
-			b, _ := json.Marshal(websrv.peers)
-			w.Write(b)
+			json.NewEncoder(w).Encode(websrv.peers)
 		}).Methods("GET")
 
 	r.HandleFunc("/message",
 		func(w http.ResponseWriter, _ *http.Request) {
 			websrv.messages_lock.Lock()
 			defer websrv.messages_lock.Unlock()
-			b, _ := json.Marshal(websrv.messages)
-			w.Write(b)
+			json.NewEncoder(w).Encode(websrv.messages)
 			websrv.messages = []Message{}
 		}).Methods("GET")
+	r.PathPrefix("/").Handler(http.StripPrefix("/", http.FileServer(http.Dir("./gui/dist"))))
 
 	return websrv
 }
