@@ -57,13 +57,10 @@ func CompareStatusVector(self []PeerStatus, remote []PeerStatus) (int, *PeerStat
 	eta, x := util_compare(m_self, m_remote)
 	if eta == Status_Equal {
 		eta2, x2 := util_compare(m_remote, m_self)
-		//	log.Printf("%v <=> %v = %v\n", print(self), print(remote), -eta2)
 		return -eta2, x2
 	} else {
-		//	log.Printf("%v <=> %v = %v\n", print(self), print(remote), eta)
 		return eta, x
 	}
-	//	log.Printf("%v <=> %v = %v\n", print(self), print(remote), 0)
 
 	return Status_Equal, nil
 }

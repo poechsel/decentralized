@@ -22,14 +22,12 @@ type Gossiper struct {
 
 /* return elements starting at 1 as it returns the new value */
 func (gossip *Gossiper) NewMsgId() uint32 {
-	fmt.Println("new msg id", gossip.CurrentMsgId)
 	return atomic.AddUint32(gossip.CurrentMsgId, 1)
 }
 
 func (gossip *Gossiper) Receive(c NetChannel) error {
 	buffer := make([]byte, 65536)
 	bytes_read, address, err := gossip.Conn.ReadFromUDP(buffer)
-	fmt.Println(address)
 
 	if err != nil {
 		return err
@@ -55,8 +53,12 @@ func (gossip *Gossiper) SendStatus(status *StatusPacket, address *net.UDPAddr) {
 	gossip.SendPacket(&GossipPacket{Status: status}, address)
 }
 
+/* This queue is only present to make sure that Q1 works nearly everytime */
+var Send_queue = make(NetChannel)
+
 func (gossip *Gossiper) SendPacket(msg *GossipPacket, address *net.UDPAddr) {
-	SendPacket(gossip.Conn, Packet{Address: address, Content: msg})
+	Send_queue <- Packet{Address: address, Content: msg}
+	//	SendPacket(gossip.Conn, Packet{Address: address, Content: msg})
 }
 
 func NewGossiper(address, name string, simple bool) (*Gossiper, error) {

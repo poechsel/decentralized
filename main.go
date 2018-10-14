@@ -72,6 +72,12 @@ func main() {
 
 		case request := <-server_queue:
 			go gossiper.ServerHandler(state, request)
+
+			/* this case should not be useful.
+			However, if not putting every message send in this channel,
+			when using the naive gossiper in Q1, some messages will not be send */
+		case write := <-lib.Send_queue:
+			lib.SendPacket(gossiper.Conn, write)
 		}
 	}
 }
