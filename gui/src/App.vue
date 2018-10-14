@@ -3,14 +3,15 @@
   <div id="container">
     <b-navbar variant="faded" type="light" class="mb-3">
       <b-navbar-brand tag="h1" class="mb-0">GUI</b-navbar-brand>
-      <b-button size="sm"> <font-awesome-icon icon="sync"/> </b-button>
+      <b-button v-on:click="refresh" size="sm"> <font-awesome-icon icon="sync"/> </b-button>
       <b-nav-text style="padding-left: 10px;">Last refresh at {{time_last_update.toTimeString()}}</b-nav-text>
       <b-navbar-nav class="ml-auto">
+      <!--
         <b-button size="sm">  <font-awesome-icon icon="power-off"/> </b-button>
+      -->
       </b-navbar-nav>
     </b-navbar>
-    <!-- HelloWorld msg="Welcome to Your Vue.js App"/-->
-    <b-container class="bv-example-row mb-3">
+    <b-container class="mb-3">
       <b-row>
         <b-col cols="8">
           <b-card header="Messages" style="height: 600px;" body-class="ovbody">
@@ -26,7 +27,7 @@
               </b-list-group-item>
           </b-list-group>
         </b-card>
-        <b-form>
+        <b-form v-on:submit.prevent>
           <b-input-group>
             <b-form-input id="message"
                           v-model="new_message"
@@ -52,7 +53,7 @@
             </b-list-group-item>
           </b-list-group>
         </b-card>
-        <b-form>
+        <b-form v-on:submit.prevent>
           <b-input-group>
             <b-form-input id="peer_address"
                           v-model="new_peer_address"
@@ -169,7 +170,7 @@ export default {
         
         setInterval(() => {
             this.refresh();
-        }, 2000);
+        }, 1000);
     },
 }
 

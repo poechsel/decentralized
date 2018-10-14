@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-var Send_queue = make(NetChannel)
-
 type Gossiper struct {
 	Address *net.UDPAddr
 	Name    string
@@ -49,17 +47,16 @@ func (gossip *Gossiper) ReceiveLoop(c NetChannel) {
 	}
 }
 
-func (gossip *Gossiper) SendRumor(rumor *RumorMessage, address *net.UDPAddr, c NetChannel) {
+func (gossip *Gossiper) SendRumor(rumor *RumorMessage, address *net.UDPAddr) {
 	fmt.Println("MONGERING with", address)
-	gossip.SendPacket(&GossipPacket{Rumor: rumor}, address, c)
+	gossip.SendPacket(&GossipPacket{Rumor: rumor}, address)
 }
-func (gossip *Gossiper) SendStatus(status *StatusPacket, address *net.UDPAddr, c NetChannel) {
-	gossip.SendPacket(&GossipPacket{Status: status}, address, c)
+func (gossip *Gossiper) SendStatus(status *StatusPacket, address *net.UDPAddr) {
+	gossip.SendPacket(&GossipPacket{Status: status}, address)
 }
 
-func (gossip *Gossiper) SendPacket(msg *GossipPacket, address *net.UDPAddr, c NetChannel) {
-	c <- Packet{Address: address, Content: msg}
-	//return gossip.Conn.WriteToUDP(packetBytes, address)
+func (gossip *Gossiper) SendPacket(msg *GossipPacket, address *net.UDPAddr) {
+	SendPacket(gossip.Conn, Packet{Address: address, Content: msg})
 }
 
 func NewGossiper(address, name string, simple bool) (*Gossiper, error) {
@@ -130,9 +127,8 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 	fmt.Println("PEERS", state)
 }
 
-func continue_rumormongering(state *State, address string, server *Gossiper, rumor *RumorMessage) {
+func (server *Gossiper) RumorMonger(state *State, address string, rumor *RumorMessage) {
 	decision := rand.Int() % 2
-	//decision := 1
 	if decision == 1 {
 		random_addr, _, err := state.getRandomPeer(address)
 		if err != nil {
@@ -140,7 +136,7 @@ func continue_rumormongering(state *State, address string, server *Gossiper, rum
 		}
 		fmt.Println("FLIPPED COIN sending rumor to", random_addr)
 		addr, _ := AddrOfString(random_addr)
-		server.SendRumor(rumor, addr, Send_queue)
+		server.SendRumor(rumor, addr)
 	} else {
 		// stop mongering
 		return
@@ -152,8 +148,7 @@ func (server *Gossiper) Broadcast(avoid string, state *State, message *SimpleMes
 		func(peer *Peer) {
 			server.SendPacket(
 				&GossipPacket{Simple: message},
-				peer.Address,
-				Send_queue)
+				peer.Address)
 		})
 }
 
@@ -161,16 +156,17 @@ func (server *Gossiper) HandleStatus(state *State, address string, remote_status
 	addr, _ := AddrOfString(address)
 	self_status := state.db.GetPeerStatus()
 	order, diff_status := CompareStatusVector(self_status, remote_status)
+
 	if order == Status_Self_Knows_More {
 		content := state.db.GetMessageContent(diff_status.Identifier, diff_status.NextID)
 		rumor := &RumorMessage{
 			Origin: diff_status.Identifier,
 			ID:     diff_status.NextID,
 			Text:   content}
-		server.SendRumor(rumor, addr, Send_queue)
+		server.SendRumor(rumor, addr)
 		return true
 	} else if order == Status_Remote_Knows_More {
-		server.SendStatus(&StatusPacket{Want: self_status}, addr, Send_queue)
+		server.SendStatus(&StatusPacket{Want: self_status}, addr)
 		return true
 	} else {
 		fmt.Println("IN SYNC WITH", address)
@@ -186,16 +182,18 @@ func (server *Gossiper) HandleRumor(state *State, sender_addr_string string, rum
 	if sender_addr_string != server.Address.String() {
 		sender_addr, _ := AddrOfString(sender_addr_string)
 		self_status := state.db.GetPeerStatus()
-		server.SendStatus(&StatusPacket{Want: self_status}, sender_addr, Send_queue)
+		server.SendStatus(&StatusPacket{Want: self_status}, sender_addr)
 	}
 
+	/* If we added a message, we then wait for an ack and
+	rumormonger if needed */
 	if message_added {
 		rand_peer_address, rand_peer, err := state.getRandomPeer(sender_addr_string)
 		if err != nil {
-			continue_rumormongering(state, sender_addr_string, server, rumor)
+			server.RumorMonger(state, sender_addr_string, rumor)
 		} else {
 			addr, _ := AddrOfString(rand_peer_address)
-			server.SendRumor(rumor, addr, Send_queue)
+			server.SendRumor(rumor, addr)
 			rand_peer.RequestStatus()
 			timer := time.NewTicker(time.Second)
 
@@ -203,10 +201,10 @@ func (server *Gossiper) HandleRumor(state *State, sender_addr_string string, rum
 			case <-timer.C:
 				rand_peer.CancelRequestStatus()
 				timer.Stop()
-				continue_rumormongering(state, sender_addr_string, server, rumor)
+				server.RumorMonger(state, sender_addr_string, rumor)
 			case ack := <-rand_peer.Status_channel:
 				if !server.HandleStatus(state, rand_peer_address, ack.Want) {
-					continue_rumormongering(state, sender_addr_string, server, rumor)
+					server.RumorMonger(state, sender_addr_string, rumor)
 				}
 			}
 		}
@@ -225,8 +223,7 @@ func (server *Gossiper) AntiEntropy(state *State) {
 					self_status := state.db.GetPeerStatus()
 					server.SendStatus(
 						&StatusPacket{Want: self_status},
-						addr,
-						Send_queue)
+						addr)
 				}
 			}
 		}

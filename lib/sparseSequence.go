@@ -6,6 +6,18 @@ import (
 	"sync"
 )
 
+/* Old datastructure which is not used anymore.
+It was created to be able to retrieve easily the first element
+non appearing in a sequence of integers.
+Basicaly, this structure partitions integers by bucket of "32" integers.
+Each time a bucket is full it is remove.
+When inserting an int "i", we first check if the bucket "i // 32" exists.
+If yes, we turn on the i % 32 bit of the bucket. Otherwise we add a new bucket
+and turn on the corresponding bit.
+To get the first non present int, we can iterate on all buckets and for each
+of them, using bittricks retrieve the leftmost 0
+*/
+
 /* consts. Each buckets holds 32 elements */
 var size_bits = uint32(5)
 var bucket_size = uint32(1 << size_bits)
