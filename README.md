@@ -1,3 +1,6 @@
+# Peerster 
+
+
 ## Install
 
 ### Peerster
@@ -15,4 +18,4 @@ Make sure you got `npm` installed. Then to install the dependencies execute `npm
 ## How to use
 
 Both the peerster and the client are used as presented in the homework.
-To use the **graphical frontend** you need to launch the peerster with a `uiport` of `8080`. The peerster will automatically launch the server, and you will be able to access to the frontend on`http://127.0.0.1:8080`.
+To use the **graphical frontend** you need to launch the peerster with a `UIPort` of `8080`. The peerster will automatically launch the server, and you will be able to access to the frontend on`http://127.0.0.1:8080`.
