@@ -1,17 +1,16 @@
 package lib
 
 import (
-	"errors"
 	"sync"
 )
 
 type Database struct {
 	lock    *sync.RWMutex
-	entries map[string]*MessageList
+	entries map[string](map[uint32]string)
 }
 
 func NewDatabase() Database {
-	return Database{lock: &sync.RWMutex{}, entries: make(map[string]*MessageList)}
+	return Database{lock: &sync.RWMutex{}, entries: make(map[string](map[uint32]string))}
 }
 
 func (db *Database) PossessRumorMessage(msg *RumorMessage) bool {
@@ -19,7 +18,8 @@ func (db *Database) PossessRumorMessage(msg *RumorMessage) bool {
 	defer db.lock.RUnlock()
 
 	if entry, ok := db.entries[msg.Origin]; ok {
-		return entry.Possess(msg.ID)
+		_, ok := entry[msg.ID]
+		return ok
 	}
 	return false
 }
@@ -27,14 +27,12 @@ func (db *Database) PossessRumorMessage(msg *RumorMessage) bool {
 func (db *Database) InsertRumorMessage(msg *RumorMessage) {
 	db.lock.Lock()
 	defer db.lock.Unlock()
-	if msg.Text == "" {
-		panic(errors.New("oupsi"))
-	}
+
 	if entry, ok := db.entries[msg.Origin]; ok {
-		entry.Insert(msg.ID, msg.Text)
+		entry[msg.ID] = msg.Text
 	} else {
-		entry = NewMessageList()
-		entry.Insert(msg.ID, msg.Text)
+		entry = make(map[uint32]string)
+		entry[msg.ID] = msg.Text
 		db.entries[msg.Origin] = entry
 	}
 }
@@ -43,7 +41,7 @@ func (db *Database) GetMessageContent(name string, id uint32) string {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
-	return db.entries[name].Get(id)
+	return db.entries[name][id]
 }
 
 func (db *Database) GetMinNotPresent(name string) uint32 {
@@ -54,7 +52,7 @@ func (db *Database) GetMinNotPresent(name string) uint32 {
 		return uint32(1)
 	}
 
-	return db.entries[name].NextId()
+	return uint32(len(db.entries[name]) + 1)
 }
 
 func (db *Database) GetPeerStatus() []PeerStatus {
@@ -64,8 +62,7 @@ func (db *Database) GetPeerStatus() []PeerStatus {
 	var status []PeerStatus
 
 	for name, entry := range db.entries {
-		next := entry.NextId()
-		status = append(status, PeerStatus{Identifier: name, NextID: next})
+		status = append(status, PeerStatus{Identifier: name, NextID: uint32(len(entry) + 1)})
 	}
 	return status
 }
