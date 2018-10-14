@@ -28,7 +28,7 @@ func main() {
 
 	peers_list := strings.Split(*peers_param, ",")
 
-	gossiper, err := lib.NewGossiper(*gossip_addr, *gossip_name, *simple)
+	gossiper, err := lib.NewGossiper(*gossip_addr, "oechsel::"+*gossip_name, *simple)
 	fmt.Println("LISTENING ON: ", *gossip_addr)
 	lib.ExitIfError(err)
 
@@ -40,7 +40,7 @@ func main() {
 		lib.ExitIfError(err)
 		go client_server.ReceiveLoop(client_queue)
 	} else {
-		web := lib.NewWebServer(state, gossiper, client_url, *gossip_name)
+		web := lib.NewWebServer(state, gossiper, client_url)
 		state.AddNewMessageCallback(web.AddMessageChannel)
 		state.AddNewPeerCallback(web.AddPeerChannel)
 		go web.Start()
