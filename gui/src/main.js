@@ -1,6 +1,6 @@
 import Vue from 'vue'
 import App from './App.vue'
-import BootstrapVue from 'bootstrap-vue'
+import Buefy from 'buefy'
 
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { faSync, faPowerOff, faPlus } from '@fortawesome/free-solid-svg-icons'
@@ -13,11 +13,10 @@ library.add(faPlus)
 Vue.component('font-awesome-icon', FontAwesomeIcon)
 
 
-import 'bootstrap/dist/css/bootstrap.css'
-import 'bootstrap-vue/dist/bootstrap-vue.css'
+import 'buefy/dist/buefy.css';
 
 Vue.config.productionTip = false
-Vue.use(BootstrapVue);
+Vue.use(Buefy)
 
 new Vue({
   render: h => h(App)

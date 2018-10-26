@@ -1,73 +1,112 @@
 <template>
 <div id="app">
   <div id="container">
-    <b-navbar variant="faded" type="light" class="mb-3">
-      <b-navbar-brand tag="h1" class="mb-0">GUI</b-navbar-brand>
-      <b-button v-on:click="refresh" size="sm"> <font-awesome-icon icon="sync"/> </b-button>
-      <b-nav-text style="padding-left: 10px;">Last refresh at {{time_last_update.toTimeString()}}</b-nav-text>
-      <b-navbar-nav class="ml-auto">
-      <!--
-        <b-button size="sm">  <font-awesome-icon icon="power-off"/> </b-button>
-      -->
-      </b-navbar-nav>
-    </b-navbar>
-    <b-container class="mb-3">
-      <b-row>
-        <b-col cols="8">
-          <b-card header="Messages" style="height: 600px;" body-class="ovbody">
-            <b-list-group flush>
-              <b-list-group-item clas="d-flex flex-row" v-for="message in messages" :key="message.Address + message.Rumor.ID">
-                <div class="d-flex justify-content-start">
-                  <b-badge variant="primary" pill>{{message.Rumor.ID}}</b-badge>
-                  <strong>{{message.Rumor.Origin}}</strong>
-                </div>
-                <div class="d-flex justify-content-end">
-                  {{message.Rumor.Text}}
-                </div>
-              </b-list-group-item>
-          </b-list-group>
-        </b-card>
-        <b-form v-on:submit.prevent>
-          <b-input-group>
-            <b-form-input id="message"
-                          v-model="new_message"
-                          required
-                          placeholder="Enter message">
-            </b-form-input>
-            <b-button type="button" v-on:click="add_message" variant="primary">Send</b-button>
-          </b-input-group>
-        </b-form>
-      </b-col>
-      <b-col>
+    <!--
+    <nav  class="navbar is-transparent" role="navigation" aria-label="main navigation" style="margin-bottom: 40px">
+      <div class="navbar-brand">
+        <span class="navbar-item"> GUI </span>
+      </div>
+      <div id="navbarBasicExample" class="navbar-menu">
+        <div class="navbar-start">
+          
+          <div class="navbar-item">
+            <a class="button" v-on:click="refresh" size="sm"> <font-awesome-icon icon="sync"/> </a>
+          </div>
+          <span class="navbar-item">Last refresh at {{time_last_update.toTimeString()}}</span>
+        </div>
+      </div>
+    </nav>
+    -->
+    
+    <div class="tile is-ancestor">
+      <div class="tile is-vertical is-8 is-parent">
         
-        <b-card header="identity" class="mb-2">
-          <strong>Address: </strong> {{server.address}} <br>
-          <strong>Name: </strong> {{server.name}}
-        </b-card>
+        <div class="tile is-child card" >
+          <header class="card-header">
+            <p class="card-header-title">
+              Messages
+            </p>
+          </header>
+          <div class="card-content">
+            <div style="overflow:hidden; margin-bottom: 20px; height: 500px">
+              <ul >
+                <li style="padding: 10px 40px 10px 40px; border-bottom: 1px solid #EEEEEE"
+                    v-for="message in messages" :key="message.Address + message.Rumor.ID">
+                  <div class="level">
+                    <div class="level-left">
+                      <b-taglist attached>
+                        <b-tag type="is-primary">{{message.Rumor.Origin}}</b-tag>
+                        <b-tag type="is-light">{{message.Rumor.ID}}</b-tag>
+                      </b-taglist>
+                    </div>
+                    <div class="level-right">
+                      <span class="d-flex justify-content-end">
+                        {{message.Rumor.Text}}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+            
+            <div class="field has-addons">
+              <div class="control" style="width:100%">
+                <input class="input" type="text" placeholder="Enter message"
+                       v-model="new_message">
+              </div>
+              <div class="control">
+                <a class="button is-info" v-on:click="add_message">
+                  Send
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+      
+      <div class="tile is-vertical is-parent">
 
-        <b-card header="Peers" style="height: 400px;" body-class="ovbody">
-          <b-list-group flush>
-            <b-list-group-item v-for="(peer, name) in peers_map" :key="peer + name">
-              <strong>{{peer}}</strong>
-              {{name}}
-            </b-list-group-item>
-          </b-list-group>
-        </b-card>
-        <b-form v-on:submit.prevent>
-          <b-input-group>
-            <b-form-input id="peer_address"
-                          v-model="new_peer_address"
-                          required
-                          placeholder="Enter peer address">
-            </b-form-input>
-            <b-button type="button" v-on:click="add_peer" variant="primary">Add Peer</b-button>
-          </b-input-group>
-        </b-form>
+        <div class="tile is-child card"  style="flex-grow: 0">
+          <div class="navbar-item">
+            <a class="button" v-on:click="refresh" size="sm"> <font-awesome-icon icon="sync"/> </a>
+          <span class="navbar-item">Last refresh at {{time_last_update.toTimeString()}}</span>
+          </div>
+        </div>
+
+        <div class="tile is-child card"  style="flex-grow: 0">
+          <div class="card-content">
+            Connected to <strong> {{server.name}} </strong> 
+            at address <strong> {{server.address}} </strong>
+          </div>
+        </div>
         
-      </b-col>
-    </b-row>
-  </b-container>
-</div>
+        <div class="card is-child tile">
+          <header class="card-header">
+            <p class="card-header-title">
+              Peers
+            </p>
+          </header>
+          <div class="card-content">
+            <b-taglist>
+              <b-tag v-for="peer in peers" :key="peer" >{{peer}}</b-tag>
+            </b-taglist>
+            <div class="field has-addons">
+              <div class="control" style="width: 100%">
+                <input class="input" type="text" placeholder="Address"
+                       v-model="new_peer_address">
+              </div>
+              <div class="control">
+                <a class="button is-info" v-on:click="add_peer">
+                  Add peer
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 </template>
 
@@ -75,8 +114,10 @@
 //import HelloWorld from './components/HelloWorld.vue'
 
 var request = require('request')
-
-/* eslint-disable */
+var x = {'Address': "", 'Rumor':{'Origin': "foo", 'ID': "4", 'Text': "I am a text"}}
+var foo = [x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x]
+ 
+ /* eslint-disable */
 export default {
     name: 'app',
     components: {
@@ -86,10 +127,10 @@ export default {
         return {
             server:{address: "Unknown", name:"Unknown"},
             peers_dns: {},
-            peers: [],
+            peers: ["arzer", "ztoetih"],
             new_peer_address: "",
             new_message: "",
-            messages: [],
+            messages: foo,
             time_last_update: new Date(Date.now()),
         }
     },
@@ -143,7 +184,7 @@ export default {
                 this.new_message = ""
             }
         },
-
+        
         refresh: function() {
             this.load_peers()
             this.get_new_messages()
@@ -177,28 +218,21 @@ export default {
 </script>
 
 <style>
+#app {
+  height: 100%;
+  padding: 150px;
+  padding-top: 100px;
+  padding-bottom: 100px;
+}
+
 #container {
     font-family: 'Avenir', Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-align: center;
-    color: #2c3e50;
-    width: 1000px;
     margin: auto;
-    overflow: hidden;
-    background-color: white;
-    margin-top: 60px;
-    margin-bottom: 60px;
     height: 100%;
-    
     box-sizing: border-box; 
-}
-
-
-.wrapper_msg {
-    overflow-y: scroll;
-    height: calc(80% - 100px);
-    margin-bottom: 20px;
 }
 
 .scrolly {
@@ -207,8 +241,6 @@ export default {
 
 .ovbody {
     overflow-y: auto;
-    margin: 0 !important;
-    padding: 0 !important;
     }
 
 </style>
