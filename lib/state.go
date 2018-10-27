@@ -2,6 +2,7 @@ package lib
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"strings"
 	"sync"
@@ -19,6 +20,9 @@ type State struct {
 	list_peers []string
 	/* database of all messages */
 	db *Database
+	/* routing table */
+	lock_routing *sync.RWMutex
+	routing      map[string]string
 
 	/* Two channels used to notify when we
 	are seeing a new message or adding a new peer */
@@ -29,10 +33,27 @@ type State struct {
 func NewState() *State {
 	db := NewDatabase()
 	state := &State{
-		known_peers: make(map[string]*Peer),
-		db:          &db,
-		lock_peers:  &sync.RWMutex{}}
+		known_peers:  make(map[string]*Peer),
+		db:           &db,
+		lock_peers:   &sync.RWMutex{},
+		lock_routing: &sync.RWMutex{},
+		routing:      make(map[string]string),
+	}
 	return state
+}
+
+func (state *State) getRouteTo(peer string) (string, bool) {
+	state.lock_routing.RLock()
+	defer state.lock_routing.RUnlock()
+	route, ok := state.routing[peer]
+	return route, ok
+}
+
+func (state *State) updateRoutingTable(peer string, address string) {
+	state.lock_routing.Lock()
+	defer state.lock_routing.Unlock()
+	fmt.Println("DSDV", peer, address)
+	state.routing[peer] = address
 }
 
 /* Get a random peer that is not in the list avoir */
@@ -126,18 +147,26 @@ type Message struct {
 	Rumor   RumorMessage
 }
 
-/* Return true if we succeeded in adding the rumor message */
-func (state *State) addRumorMessage(rumor *RumorMessage, sender_addr_string string) bool {
+/* Return a tuple of booleans
+The first one is true if we succeeded in adding the rumor message
+The second one is true if we have seen a message with id greater than
+the current one stored
+*/
+func (state *State) addRumorMessage(rumor *RumorMessage, sender_addr_string string) (bool, bool) {
+	minNotPresent := state.db.GetMinNotPresent(rumor.Origin)
+	isIdGreater := rumor.ID >= minNotPresent
 	if !state.db.PossessRumorMessage(rumor) &&
-		state.db.GetMinNotPresent(rumor.Origin) == rumor.ID {
+		minNotPresent == rumor.ID {
 
-		state.db.InsertRumorMessage(rumor)
+		if rumor.Text != "" {
+			state.db.InsertRumorMessage(rumor)
+		}
 
 		for _, c := range state.addMessageChannels {
 			c <- Message{Rumor: *rumor, Address: sender_addr_string}
 		}
-		return true
+		return true, isIdGreater
 	} else {
-		return false
+		return false, isIdGreater
 	}
 }

@@ -25,12 +25,13 @@ func main() {
 	gossip_addr := flag.String("gossipAddr", "127.0.0.1:5000", "ip:port for the gossiper")
 	gossip_name := flag.String("name", "123456789", "name of the gossiper")
 	peers_param := flag.String("peers", "", "comma separated list of peers of the form ip:port")
+	rtimer := flag.Int("rtimer", 0, "route rumors sending period in seconds, 0 to disable sending of route rumors")
 	var simple = flag.Bool("simple", false, "run gossiper in simple broadcast mode")
 	flag.Parse()
 	peers_list := strings.Split(*peers_param, ",")
 
 	/* create the current gossiper */
-	gossiper, err := lib.NewGossiper(*gossip_addr, *gossip_name, *simple)
+	gossiper, err := lib.NewGossiper(*gossip_addr, *gossip_name, *simple, *rtimer)
 	fmt.Println("LISTENING ON: ", *gossip_addr)
 	lib.ExitIfError(err)
 	state := lib.NewState()
@@ -46,7 +47,7 @@ func main() {
 	} else {
 		/* otherwise, we connect to the client and we wait to receive
 		corresponding messages */
-		client_server, err := lib.NewGossiper(client_url, "client", *simple)
+		client_server, err := lib.NewGossiper(client_url, "client", *simple, 0)
 		lib.ExitIfError(err)
 		go client_server.ReceiveLoop(client_queue)
 	}
@@ -63,6 +64,8 @@ func main() {
 	if !gossiper.SimpleMode {
 		gossiper.AntiEntropy(state)
 	}
+
+	go gossiper.RefreshRouteLoop(state)
 
 	/* loop on incoming messages */
 	for {
