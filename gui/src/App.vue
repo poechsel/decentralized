@@ -35,7 +35,7 @@
                   <div class="level">
                     <div class="level-left">
                       <b-taglist attached>
-                        <b-tag type="is-primary">{{message.Rumor.Origin}}</b-tag>
+                        <b-tag type="is-info">{{message.Rumor.Origin}}</b-tag>
                         <b-tag type="is-light">{{message.Rumor.ID}}</b-tag>
                       </b-taglist>
                     </div>
