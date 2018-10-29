@@ -28,38 +28,9 @@
             </p>
           </header>
           <div class="card-content">
-            <div style="overflow:hidden; margin-bottom: 20px; height: 500px">
-              <ul >
-                <li style="padding: 10px 40px 10px 40px; border-bottom: 1px solid #EEEEEE"
-                    v-for="message in messages" :key="message.Address + message.Rumor.ID">
-                  <div class="level">
-                    <div class="level-left">
-                      <b-taglist attached>
-                        <b-tag type="is-info">{{message.Rumor.Origin}}</b-tag>
-                        <b-tag type="is-light">{{message.Rumor.ID}}</b-tag>
-                      </b-taglist>
-                    </div>
-                    <div class="level-right">
-                      <span class="d-flex justify-content-end">
-                        {{message.Rumor.Text}}
-                      </span>
-                    </div>
-                  </div>
-                </li>
-              </ul>
-            </div>
-            
-            <div class="field has-addons">
-              <div class="control" style="width:100%">
-                <input class="input" type="text" placeholder="Enter message"
-                       v-model="new_message">
-              </div>
-              <div class="control">
-                <a class="button is-info" v-on:click="add_message">
-                  Send
-                </a>
-              </div>
-            </div>
+            <messages :messages=messages
+                      @submit-message='(content) => {add_message(content)}'>
+              </messages>
           </div>
         </div>
         
@@ -111,17 +82,17 @@
 </template>
 
 <script>
-//import HelloWorld from './components/HelloWorld.vue'
+import Messages from './components/Messages.vue'
 
 var request = require('request')
 var x = {'Address': "", 'Rumor':{'Origin': "foo", 'ID': "4", 'Text': "I am a text"}}
 var foo = [x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x]
- 
- /* eslint-disable */
+
+/* eslint-disable */
 export default {
     name: 'app',
     components: {
-        //    HelloWorld
+        Messages
     },
     data () {
         return {
@@ -173,16 +144,13 @@ export default {
             }
         },
         
-        add_message: function(event) {
-            if (this.new_message != "") {
-                request.post({
-                    headers: {'content-type' : 'application/json'},
-                    url:     'http://127.0.0.1:8080/message',
-                    body:    JSON.stringify(this.new_message)
-                }, function(error, response, body){
-                });
-                this.new_message = ""
-            }
+        add_message: function(content) {
+            request.post({
+                headers: {'content-type' : 'application/json'},
+                url:     'http://127.0.0.1:8080/message',
+                body:    JSON.stringify(content)
+            }, function(error, response, body){
+            });
         },
         
         refresh: function() {
@@ -190,7 +158,6 @@ export default {
             this.get_new_messages()
             this.time_last_update = new Date(Date.now())
         }
-        
     },
     computed: {
         peers_map: function() {
@@ -211,7 +178,7 @@ export default {
         
         setInterval(() => {
             this.refresh();
-        }, 1000);
+        }, 1000000);
     },
 }
 
