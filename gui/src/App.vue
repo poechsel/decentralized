@@ -2,56 +2,90 @@
 <div id="app">
   <div id="container">
     <!--
-    <nav  class="navbar is-transparent" role="navigation" aria-label="main navigation" style="margin-bottom: 40px">
-      <div class="navbar-brand">
-        <span class="navbar-item"> GUI </span>
-      </div>
-      <div id="navbarBasicExample" class="navbar-menu">
-        <div class="navbar-start">
-          
-          <div class="navbar-item">
-            <a class="button" v-on:click="refresh" size="sm"> <font-awesome-icon icon="sync"/> </a>
+        <nav  class="navbar is-transparent" role="navigation" aria-label="main navigation" style="margin-bottom: 40px">
+          <div class="navbar-brand">
+            <span class="navbar-item"> GUI </span>
           </div>
-          <span class="navbar-item">Last refresh at {{time_last_update.toTimeString()}}</span>
-        </div>
-      </div>
-    </nav>
-    -->
+          <div id="navbarBasicExample" class="navbar-menu">
+            <div class="navbar-start">
+              
+              <div class="navbar-item">
+                <a class="button" v-on:click="refresh" size="sm"> <font-awesome-icon icon="sync"/> </a>
+              </div>
+              <span class="navbar-item">Last refresh at {{time_last_update.toTimeString()}}</span>
+            </div>
+          </div>
+        </nav>
+        -->
     
     <div class="tile is-ancestor">
       <div class="tile is-vertical is-8 is-parent">
         
         <div class="tile is-child card" >
           <header class="card-header">
-            <p class="card-header-title">
-              Messages
-            </p>
+            <div class="level">
+              <div class="level-left">
+                <div style="width: 20px"></div>
+                <b-dropdown>
+                  <button class="button is-light" slot="trigger">
+                    <i class="fas fa-plus"></i>
+                    <b-icon icon="menu-down"></b-icon>
+                  </button>
+                  
+                  <b-dropdown-item
+                    v-for="peer in peer_names"
+                    v-if="!opened_private_channels.includes(peer)"
+                    :key="peer"
+                    @click="open_private_channel(peer)">
+                    {{peer}}
+                  </b-dropdown-item>
+                </b-dropdown>
+                <p class="card-header-title level-item">
+                  Messages
+                </p>
+              </div>
+            </div>
           </header>
           <div class="card-content">
-            <messages :messages=messages
-                      @submit-message='(content) => {add_message(content)}'>
-              </messages>
+            <b-tabs type="is-toggle" :animated="false">
+              <b-tab-item icon="users" iconPack="fa" label="General">
+                <messages :messages=messages
+                          @submit-message='(content) => {add_message(content)}'>
+                </messages>
+              </b-tab-item>
+
+              <b-tab-item
+                icon="user" iconPack="fa"
+                v-for="peer in opened_private_channels"
+                :label="peer" :key="peer">
+                <messages :messages="private_channels[peer]"
+                          @submit-message='(content) => {add_private_message(peer, content)}'>
+                          >
+                </messages>
+              </b-tab-item>
+
+            </b-tabs>
           </div>
         </div>
         
       </div>
       
       <div class="tile is-vertical is-parent">
-
+        
         <div class="tile is-child card"  style="flex-grow: 0">
           <div class="navbar-item">
             <a class="button" v-on:click="refresh" size="sm"> <font-awesome-icon icon="sync"/> </a>
-          <span class="navbar-item">Last refresh at {{time_last_update.toTimeString()}}</span>
+            <span class="navbar-item">Last refresh at {{time_last_update.toTimeString()}}</span>
           </div>
         </div>
-
+        
         <div class="tile is-child card"  style="flex-grow: 0">
           <div class="card-content">
             Connected to <strong> {{server.name}} </strong> 
             at address <strong> {{server.address}} </strong>
           </div>
         </div>
-        
+
         <div class="card is-child tile">
           <header class="card-header">
             <p class="card-header-title">
@@ -73,12 +107,13 @@
                 </a>
               </div>
             </div>
+            </div>
+            </div>
+            
           </div>
         </div>
       </div>
     </div>
-  </div>
-</div>
 </template>
 
 <script>
@@ -99,13 +134,25 @@ export default {
             server:{address: "Unknown", name:"Unknown"},
             peers_dns: {},
             peers: ["arzer", "ztoetih"],
+            peer_names: ["arzer", "ztoetih"],
             new_peer_address: "",
             new_message: "",
             messages: foo,
             time_last_update: new Date(Date.now()),
+            opened_private_channels: ["arzer"],
+            private_channels: {"arzer": [x, x, x, x]},
         }
     },
     methods: {
+        open_private_channel: function(peer) {
+            if (this.opened_private_channels.includes(peer)) {
+                return
+            }
+            this.opened_private_channels.push(peer)
+            if (!(peer in this.private_channels))
+                this.private_channels[peer] = []
+        },
+        
         load_identity: function() {
             request('http://127.0.0.1:8080/id', (error, response, body) => {
                 let r = JSON.parse(body) 
@@ -153,6 +200,15 @@ export default {
             });
         },
         
+        add_private_message: function(peer, content) {
+            request.post({
+                headers: {'content-type' : 'application/json'},
+                url:     'http://127.0.0.1:8080/message',
+                body:    JSON.stringify(content)
+            }, function(error, response, body){
+            });
+        },
+        
         refresh: function() {
             this.load_peers()
             this.get_new_messages()
@@ -178,7 +234,7 @@ export default {
         
         setInterval(() => {
             this.refresh();
-        }, 1000000);
+        }, 1000);
     },
 }
 
@@ -186,10 +242,10 @@ export default {
 
 <style>
 #app {
-  height: 100%;
-  padding: 150px;
-  padding-top: 100px;
-  padding-bottom: 100px;
+    height: 100%;
+    padding: 150px;
+    padding-top: 100px;
+    padding-bottom: 100px;
 }
 
 #container {
