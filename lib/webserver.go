@@ -8,15 +8,24 @@ import (
 	"time"
 )
 
+type PrivatePost struct {
+	To      string
+	Content string
+}
+
 type WebServer struct {
-	server            *http.Server
-	AddPeerChannel    chan string
-	AddMessageChannel chan Message
-	messages_lock     *sync.RWMutex
-	messages          []Message
-	peers_lock        *sync.RWMutex
-	peers             []string
-	nameServer        string
+	server                   *http.Server
+	AddPeerChannel           chan string
+	AddMessageChannel        chan Message
+	AddPrivateMessageChannel chan PrivateMessage
+	messages_lock            *sync.RWMutex
+	messages                 []Message
+	peers_lock               *sync.RWMutex
+	peers                    []string
+
+	private_lock *sync.RWMutex
+	private      []PrivateMessage
+	nameServer   string
 }
 
 func (websrv *WebServer) ListenEvents() {
@@ -30,6 +39,10 @@ func (websrv *WebServer) ListenEvents() {
 			websrv.messages_lock.Lock()
 			websrv.messages = append(websrv.messages, msg)
 			websrv.messages_lock.Unlock()
+		case msg := <-websrv.AddPrivateMessageChannel:
+			websrv.private_lock.Lock()
+			websrv.private = append(websrv.private, msg)
+			websrv.private_lock.Unlock()
 		}
 	}
 }
@@ -81,6 +94,14 @@ func NewWebServer(state *State, server *Gossiper, address string) *WebServer {
 			server.HandleRumor(state, server.Address.String(), &rumor)
 		}).Methods("POST")
 
+	r.HandleFunc("/private",
+		func(_ http.ResponseWriter, r *http.Request) {
+			var message PrivatePost
+			json.NewDecoder(r.Body).Decode(&message)
+			private := NewPrivateMessage(websrv.nameServer, message.Content, message.To)
+			server.HandlePrivateMessage(state, server.Address.String(), &private)
+		}).Methods("POST")
+
 	r.HandleFunc("/id",
 		func(w http.ResponseWriter, _ *http.Request) {
 			e := ServerId{Name: server.Name, Address: server.Address.String()}
@@ -95,12 +116,25 @@ func NewWebServer(state *State, server *Gossiper, address string) *WebServer {
 			json.NewEncoder(w).Encode(websrv.peers)
 		}).Methods("GET")
 
+	r.HandleFunc("/routingtable",
+		func(w http.ResponseWriter, _ *http.Request) {
+			json.NewEncoder(w).Encode(state.GetRoutingTable())
+		}).Methods("GET")
+
 	r.HandleFunc("/message",
 		func(w http.ResponseWriter, _ *http.Request) {
 			websrv.messages_lock.Lock()
 			defer websrv.messages_lock.Unlock()
 			json.NewEncoder(w).Encode(websrv.messages)
 			websrv.messages = []Message{}
+		}).Methods("GET")
+
+	r.HandleFunc("/private",
+		func(w http.ResponseWriter, _ *http.Request) {
+			websrv.messages_lock.Lock()
+			defer websrv.messages_lock.Unlock()
+			json.NewEncoder(w).Encode(websrv.private)
+			websrv.private = []PrivateMessage{}
 		}).Methods("GET")
 
 	/* we also serve a bunch of static files */

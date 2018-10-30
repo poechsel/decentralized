@@ -99,6 +99,9 @@ func (server *Gossiper) ClientHandler(state *State, request Packet) {
 				Text:   packet.Simple.Contents}
 			go server.HandleRumor(state, server.Address.String(), &r)
 		}
+	} else if packet.Private != nil {
+		p := NewPrivateMessage(packet.Private.Origin, packet.Private.Text, packet.Private.Destination)
+		go server.HandlePrivateMessage(state, server.Address.String(), &p)
 	}
 }
 
@@ -183,8 +186,15 @@ func (server *Gossiper) HandleStatus(state *State, address string, remote_status
 }
 
 func (server *Gossiper) HandlePrivateMessage(state *State, sender_addr_string string, private *PrivateMessage) {
-	if private.Destination == server.Address.String() {
+	/* This check is only to make sure that we dispatch private messages
+	sent by our current node */
+	if private.Origin == server.Name {
+		state.addPrivateMessage(private)
+	}
+
+	if private.Destination == server.Name {
 		fmt.Println("PRIVATE", private)
+		state.addPrivateMessage(private)
 	} else {
 		next, ok := private.NextHop()
 		next_address, ok2 := state.getRouteTo(private.Destination)

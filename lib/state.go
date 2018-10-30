@@ -8,6 +8,11 @@ import (
 	"sync"
 )
 
+type Message struct {
+	Address string
+	Rumor   RumorMessage
+}
+
 /* The State contains all knowledge we have about the world.
 This include the messages, the peers...
 */
@@ -26,8 +31,19 @@ type State struct {
 
 	/* Two channels used to notify when we
 	are seeing a new message or adding a new peer */
-	addMessageChannels [](chan Message)
-	addPeerChannels    [](chan string)
+	addMessageChannels        [](chan Message)
+	addPrivateMessageChannels [](chan PrivateMessage)
+	addPeerChannels           [](chan string)
+}
+
+func (state *State) GetRoutingTable() map[string]string {
+	state.lock_routing.RLock()
+	defer state.lock_routing.RUnlock()
+	out := make(map[string]string)
+	for key, value := range state.routing {
+		out[key] = value
+	}
+	return out
 }
 
 func NewState() *State {
@@ -142,11 +158,6 @@ func (state *State) IterPeers(avoid string, fct func(*Peer)) {
 	}
 }
 
-type Message struct {
-	Address string
-	Rumor   RumorMessage
-}
-
 /* Return a tuple of booleans
 The first one is true if we succeeded in adding the rumor message
 The second one is true if we have seen a message with id greater than
@@ -168,5 +179,11 @@ func (state *State) addRumorMessage(rumor *RumorMessage, sender_addr_string stri
 		return true, isIdGreater
 	} else {
 		return false, isIdGreater
+	}
+}
+
+func (state *State) addPrivateMessage(private *PrivateMessage) {
+	for _, c := range state.addPrivateMessageChannels {
+		c <- *private
 	}
 }
