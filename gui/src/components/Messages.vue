@@ -3,17 +3,17 @@
     <div style="overflow:hidden; margin-bottom: 20px; height: 500px">
       <ul >
         <li style="padding: 10px 40px 10px 40px; border-bottom: 1px solid #EEEEEE"
-            v-for="message in messages" :key="message.Address + message.Rumor.ID">
+            v-for="(message, index) in messages" :key="index">
           <div class="level">
             <div class="level-left">
               <b-taglist attached>
-                <b-tag type="is-info">{{message.Rumor.Origin}}</b-tag>
-                <b-tag type="is-light">{{message.Rumor.ID}}</b-tag>
+                <b-tag type="is-info">{{message.Origin}}</b-tag>
+                <b-tag type="is-light">{{message.ID}}</b-tag>
               </b-taglist>
             </div>
             <div class="level-right">
               <span class="d-flex justify-content-end">
-                {{message.Rumor.Text}}
+                {{message.Text}}
               </span>
             </div>
           </div>

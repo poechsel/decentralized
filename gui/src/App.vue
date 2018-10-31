@@ -33,7 +33,7 @@
                   </button>
                   
                   <b-dropdown-item
-                    v-for="peer in peer_names"
+                    v-for="peer in routing_table"
                     v-if="!opened_private_channels.includes(peer)"
                     :key="peer"
                     @click="open_private_channel(peer)">
@@ -74,7 +74,7 @@
         
         <div class="tile is-child card"  style="flex-grow: 0">
           <div class="navbar-item">
-            <a class="button" v-on:click="refresh" size="sm"> <font-awesome-icon icon="sync"/> </a>
+            <a class="button" v-on:click="refresh" size="sm"> <i class="fas fa-sync"/> </a>
             <span class="navbar-item">Last refresh at {{time_last_update.toTimeString()}}</span>
           </div>
         </div>
@@ -120,7 +120,7 @@
 import Messages from './components/Messages.vue'
 
 var request = require('request')
-var x = {'Address': "", 'Rumor':{'Origin': "foo", 'ID': "4", 'Text': "I am a text"}}
+var x = {'Origin': "foo", 'ID': "4", 'Text': "I am a text"}
 var foo = [x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x]
 
 /* eslint-disable */
@@ -134,7 +134,7 @@ export default {
             server:{address: "Unknown", name:"Unknown"},
             peers_dns: {},
             peers: ["arzer", "ztoetih"],
-            peer_names: ["arzer", "ztoetih"],
+            routing_table: ["arzer", "ztoetih"],
             new_peer_address: "",
             new_message: "",
             messages: foo,
@@ -174,11 +174,40 @@ export default {
             request('http://127.0.0.1:8080/message', (error, response, body) => {
                 let r = JSON.parse(body) 
                 for (var p of r) {
-                    this.messages.push(p)
+                    this.messages.push(message.Rumor)
                 }
             })
         },
         
+        get_new_private_messages: function() {
+            request('http://127.0.0.1:8080/private', (error, response, body) => {
+                let r = JSON.parse(body) 
+                for (var p of r) {
+                    let bucket = p.Origin
+                    if (bucket == this.server_name) {
+                        bucket = p.Destination
+                    }
+                    if (bucket in this.private_channels) {
+                        this.private_channels.append(p)
+                    } else {
+                        this.private_channels[bucket] = [p]
+                    }
+                }
+            })
+        },
+
+        
+        
+        get_routing_table: function() {
+            request('http://127.0.0.1:8080/routingtable', (error, response, body) => {
+                let r = JSON.parse(body) 
+                this.routing_table = []
+                for (var p of r) {
+                    this.routing_table.push(p)
+                }
+            })
+        },
+
         add_peer: function(event) {
             if (this.new_peer_address != "") {
                 request.post({
@@ -203,8 +232,8 @@ export default {
         add_private_message: function(peer, content) {
             request.post({
                 headers: {'content-type' : 'application/json'},
-                url:     'http://127.0.0.1:8080/message',
-                body:    JSON.stringify(content)
+                url:     'http://127.0.0.1:8080/private',
+                body:    JSON.stringify({'Content':content, 'To': peer})
             }, function(error, response, body){
             });
         },

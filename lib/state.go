@@ -36,12 +36,12 @@ type State struct {
 	addPeerChannels           [](chan string)
 }
 
-func (state *State) GetRoutingTable() map[string]string {
+func (state *State) GetRoutingTableNames() []string {
 	state.lock_routing.RLock()
 	defer state.lock_routing.RUnlock()
-	out := make(map[string]string)
-	for key, value := range state.routing {
-		out[key] = value
+	out := []string{}
+	for key, _ := range state.routing {
+		out = append(out, key)
 	}
 	return out
 }

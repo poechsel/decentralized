@@ -118,7 +118,7 @@ func NewWebServer(state *State, server *Gossiper, address string) *WebServer {
 
 	r.HandleFunc("/routingtable",
 		func(w http.ResponseWriter, _ *http.Request) {
-			json.NewEncoder(w).Encode(state.GetRoutingTable())
+			json.NewEncoder(w).Encode(state.GetRoutingTableNames())
 		}).Methods("GET")
 
 	r.HandleFunc("/message",
