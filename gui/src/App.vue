@@ -47,7 +47,7 @@
             </div>
           </header>
           <div class="card-content">
-            <b-tabs type="is-toggle" :animated="false">
+            <b-tabs type="is-toggle" :animated="false" @input="(index) => opened_channel = index" v-model="opened_channel">
               <b-tab-item icon="users" iconPack="fa" label="General">
                 <messages :messages=messages
                           @submit-message='(content) => {add_message(content)}'>
@@ -75,7 +75,7 @@
         <div class="tile is-child card"  style="flex-grow: 0">
           <div class="navbar-item">
             <a class="button" v-on:click="refresh" size="sm"> <i class="fas fa-sync"/> </a>
-            <span class="navbar-item">Last refresh at {{time_last_update.toTimeString()}}</span>
+            <span class="navbar-item">Last refresh at {{time_last_update.toLocaleTimeString()}}</span>
           </div>
         </div>
         
@@ -120,35 +120,39 @@
 import Messages from './components/Messages.vue'
 
 var request = require('request')
-var x = {'Origin': "foo", 'ID': "4", 'Text': "I am a text"}
-var foo = [x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x]
-
-/* eslint-disable */
-export default {
-    name: 'app',
-    components: {
-        Messages
-    },
-    data () {
-        return {
-            server:{address: "Unknown", name:"Unknown"},
-            peers_dns: {},
-            peers: [],
-            routing_table: [],
-            new_peer_address: "",
-            new_message: "",
-            messages: [],
-            time_last_update: new Date(Date.now()),
-            opened_private_channels: [],
-            private_channels: {},
-        }
-    },
-    methods: {
-        open_private_channel: function(peer) {
-            if (this.opened_private_channels.includes(peer)) {
-                return
-            }
-            this.opened_private_channels.push(peer)
+ //var x = {'Origin': "foo", 'ID': "4", 'Text': "I am a text"}
+ //var foo = [x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x]
+ 
+ /* eslint-disable */
+ export default {
+     name: 'app',
+     components: {
+         Messages
+     },
+     data () {
+         return {
+             server:{address: "Unknown", name:"Unknown"},
+             peers_dns: {},
+             peers: [],
+             routing_table: ["d", "a", "b", "c"],
+             new_peer_address: "",
+             new_message: "",
+             messages: [],
+             time_last_update: new Date(Date.now()),
+             opened_private_channels: [],
+             private_channels: {},
+             opened_channel: 0,
+         }
+     },
+     methods: {
+         open_private_channel: function(peer) {
+             if (this.opened_private_channels.includes(peer)) {
+                 return
+             }
+             this.opened_private_channels.push(peer)
+             this.$nextTick(function() {
+                 this.opened_channel = this.opened_private_channels.length
+            })
             if (!(peer in this.private_channels))
                 this.private_channels[peer] = []
         },
@@ -181,15 +185,12 @@ export default {
         
         get_new_private_messages: function() {
             request('http://127.0.0.1:8080/private', (error, response, body) => {
-                console.log(body)
                 let r = JSON.parse(body) 
-                console.log(r)
                 for (var p of r) {
                     let bucket = p.Origin
                     if (bucket == this.server.name) {
                         bucket = p.Destination
                     }
-                    console.log(bucket, this.private_channels)
                     if (bucket in this.private_channels) {
                         this.private_channels[bucket].push(p)
                     } else {
@@ -204,10 +205,13 @@ export default {
         get_routing_table: function() {
             request('http://127.0.0.1:8080/routingtable', (error, response, body) => {
                 let r = JSON.parse(body) 
+                // adding elements one by one to make sure vuejs has seen the
+                // update on the array
                 this.routing_table = []
                 for (var p of r) {
                     this.routing_table.push(p)
                 }
+                this.routing_table.sort()
             })
         },
 
