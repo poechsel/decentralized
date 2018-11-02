@@ -65,7 +65,7 @@ func (state *State) getRouteTo(peer string) (string, bool) {
 	return route, ok
 }
 
-func (state *State) updateRoutingTable(peer string, address string) {
+func (state *State) UpdateRoutingTable(peer string, address string) {
 	state.lock_routing.Lock()
 	defer state.lock_routing.Unlock()
 	fmt.Println("DSDV", peer, address)
@@ -101,6 +101,9 @@ func (state *State) AddNewPeerCallback(c chan string) {
 }
 func (state *State) AddNewMessageCallback(c chan Message) {
 	state.addMessageChannels = append(state.addMessageChannels, c)
+}
+func (state *State) AddNewPrivateMessageCallback(c chan PrivateMessage) {
+	state.addPrivateMessageChannels = append(state.addPrivateMessageChannels, c)
 }
 
 /* If the peer at address "address" requests an ack, then dispatch
@@ -167,12 +170,12 @@ func (state *State) addRumorMessage(rumor *RumorMessage, sender_addr_string stri
 	minNotPresent := state.db.GetMinNotPresent(rumor.Origin)
 	isIdGreater := rumor.ID >= minNotPresent
 	if minNotPresent == rumor.ID && !state.db.PossessRumorMessage(rumor) {
-		if rumor.Text != "" {
-			state.db.InsertRumorMessage(rumor)
-		}
+		state.db.InsertRumorMessage(rumor)
 
-		for _, c := range state.addMessageChannels {
-			c <- Message{Rumor: *rumor, Address: sender_addr_string}
+		if rumor.Text != "" {
+			for _, c := range state.addMessageChannels {
+				c <- Message{Rumor: *rumor, Address: sender_addr_string}
+			}
 		}
 		return true, isIdGreater
 	} else {
@@ -182,6 +185,7 @@ func (state *State) addRumorMessage(rumor *RumorMessage, sender_addr_string stri
 
 func (state *State) addPrivateMessage(private *PrivateMessage) {
 	for _, c := range state.addPrivateMessageChannels {
+		fmt.Println("dispatching")
 		c <- *private
 	}
 }

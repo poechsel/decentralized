@@ -100,7 +100,10 @@ func (server *Gossiper) ClientHandler(state *State, request Packet) {
 			go server.HandleRumor(state, server.Address.String(), &r)
 		}
 	} else if packet.Private != nil {
-		p := NewPrivateMessage(packet.Private.Origin, packet.Private.Text, packet.Private.Destination)
+		p := NewPrivateMessage(
+			server.Name,
+			packet.Private.Text,
+			packet.Private.Destination)
 		go server.HandlePrivateMessage(state, server.Address.String(), &p)
 	}
 }
@@ -111,7 +114,6 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 	if source_string != server.Address.String() {
 		go state.AddPeer(source_string)
 	}
-	fmt.Println(state.GetRoutingTableNames())
 	if packet.Simple != nil {
 		fmt.Println("SIMPLE MESSAGE", packet.Simple)
 		server.Broadcast(
@@ -187,12 +189,6 @@ func (server *Gossiper) HandleStatus(state *State, address string, remote_status
 }
 
 func (server *Gossiper) HandlePrivateMessage(state *State, sender_addr_string string, private *PrivateMessage) {
-	/* This check is only to make sure that we dispatch private messages
-	sent by our current node */
-	if private.Origin == server.Name {
-		state.addPrivateMessage(private)
-	}
-
 	if private.Destination == server.Name {
 		fmt.Println("PRIVATE", private)
 		state.addPrivateMessage(private)
@@ -203,6 +199,12 @@ func (server *Gossiper) HandlePrivateMessage(state *State, sender_addr_string st
 			address, _ := AddrOfString(next_address)
 			server.SendPrivate(&next, address)
 		}
+
+		/* This check is only to make sure that we dispatch private messages
+		sent by our current node */
+		if private.Origin == server.Name {
+			state.addPrivateMessage(private)
+		}
 	}
 }
 
@@ -211,7 +213,7 @@ func (server *Gossiper) HandleRumor(state *State, sender_addr_string string, rum
 	message_added, isIdGreater := state.addRumorMessage(rumor, sender_addr_string)
 
 	if isIdGreater {
-		state.updateRoutingTable(rumor.Origin, sender_addr_string)
+		state.UpdateRoutingTable(rumor.Origin, sender_addr_string)
 	}
 
 	// send the ack
@@ -266,9 +268,15 @@ func (server *Gossiper) AntiEntropy(state *State) {
 	}()
 }
 
+func (server *Gossiper) createRouteRefresh(state *State) *RumorMessage {
+	rm := &RumorMessage{Origin: server.Name, ID: server.NewMsgId(), Text: ""}
+	state.db.InsertRumorMessage(rm)
+	return rm
+}
+
 func (server *Gossiper) RefreshRouteLoop(state *State) {
 	if server.Rtimer > 0 {
-		rm := &RumorMessage{Origin: server.Name, ID: server.NewMsgId(), Text: ""}
+		rm := server.createRouteRefresh(state)
 		server.Broadcast("", state, &GossipPacket{Rumor: rm})
 		ticker := time.NewTicker(time.Duration(server.Rtimer) * time.Second)
 		go func() {
@@ -276,14 +284,9 @@ func (server *Gossiper) RefreshRouteLoop(state *State) {
 				select {
 				case <-ticker.C:
 					rand_peer_address, _, err := state.getRandomPeer()
-					fmt.Println("RANDPEER", rand_peer_address)
 					if err == nil {
 						addr, _ := AddrOfString(rand_peer_address)
-						rm := &RumorMessage{
-							Origin: server.Name,
-							ID:     server.NewMsgId(),
-							Text:   "",
-						}
+						rm := server.createRouteRefresh(state)
 						server.SendRumor(rm, addr)
 					}
 				}

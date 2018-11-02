@@ -35,6 +35,7 @@ func main() {
 	fmt.Println("LISTENING ON: ", *gossip_addr)
 	lib.ExitIfError(err)
 	state := lib.NewState()
+	state.UpdateRoutingTable(gossiper.Name, gossiper.Address.String())
 
 	client_url := "127.0.0.1:" + *client_port
 	/* If the UIPort is 8080, it means that we want to interact with
@@ -42,6 +43,7 @@ func main() {
 	if *client_port == "8080" {
 		web := lib.NewWebServer(state, gossiper, client_url)
 		state.AddNewMessageCallback(web.AddMessageChannel)
+		state.AddNewPrivateMessageCallback(web.AddPrivateMessageChannel)
 		state.AddNewPeerCallback(web.AddPeerChannel)
 		go web.Start()
 	} else {

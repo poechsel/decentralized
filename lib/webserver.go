@@ -60,13 +60,15 @@ func NewWebServer(state *State, server *Gossiper, address string) *WebServer {
 		ReadTimeout:  15 * time.Second,
 	}
 	websrv := &WebServer{server: srv,
-		nameServer:        name,
-		messages:          []Message{},
-		peers:             []string{},
-		AddPeerChannel:    make(chan string, 64),
-		AddMessageChannel: make(chan Message, 64),
-		messages_lock:     &sync.RWMutex{},
-		peers_lock:        &sync.RWMutex{},
+		nameServer:               name,
+		messages:                 []Message{},
+		peers:                    []string{},
+		AddPeerChannel:           make(chan string, 64),
+		AddMessageChannel:        make(chan Message, 64),
+		AddPrivateMessageChannel: make(chan PrivateMessage, 64),
+		messages_lock:            &sync.RWMutex{},
+		peers_lock:               &sync.RWMutex{},
+		private_lock:             &sync.RWMutex{},
 	}
 
 	go websrv.ListenEvents()
@@ -131,8 +133,8 @@ func NewWebServer(state *State, server *Gossiper, address string) *WebServer {
 
 	r.HandleFunc("/private",
 		func(w http.ResponseWriter, _ *http.Request) {
-			websrv.messages_lock.Lock()
-			defer websrv.messages_lock.Unlock()
+			websrv.private_lock.Lock()
+			defer websrv.private_lock.Unlock()
 			json.NewEncoder(w).Encode(websrv.private)
 			websrv.private = []PrivateMessage{}
 		}).Methods("GET")

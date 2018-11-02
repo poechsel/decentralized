@@ -133,14 +133,14 @@ export default {
         return {
             server:{address: "Unknown", name:"Unknown"},
             peers_dns: {},
-            peers: ["arzer", "ztoetih"],
-            routing_table: ["arzer", "ztoetih"],
+            peers: [],
+            routing_table: [],
             new_peer_address: "",
             new_message: "",
-            messages: foo,
+            messages: [],
             time_last_update: new Date(Date.now()),
-            opened_private_channels: ["arzer"],
-            private_channels: {"arzer": [x, x, x, x]},
+            opened_private_channels: [],
+            private_channels: {},
         }
     },
     methods: {
@@ -181,15 +181,17 @@ export default {
         
         get_new_private_messages: function() {
             request('http://127.0.0.1:8080/private', (error, response, body) => {
+                console.log(body)
                 let r = JSON.parse(body) 
                 console.log(r)
                 for (var p of r) {
                     let bucket = p.Origin
-                    if (bucket == this.server_name) {
+                    if (bucket == this.server.name) {
                         bucket = p.Destination
                     }
+                    console.log(bucket, this.private_channels)
                     if (bucket in this.private_channels) {
-                        this.private_channels.append(p)
+                        this.private_channels[bucket].push(p)
                     } else {
                         this.private_channels[bucket] = [p]
                     }
