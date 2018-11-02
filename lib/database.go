@@ -10,13 +10,29 @@ It is basically a two dimensional hashmap, the first one
 being indexed by the peers name and the second one by the
 message ids */
 
+type Entry struct {
+	min_not_present  uint32
+	min_not_present2 uint32
+	messages         map[uint32]string
+}
+
+func NewEntry() *Entry {
+	return &Entry{min_not_present: 1, min_not_present2: 1, messages: make(map[uint32]string)}
+}
+
+func (entry *Entry) Insert(text string, id uint32) {
+	entry.messages[id] = text
+	entry.min_not_present = uint32(len(entry.messages))
+	entry.min_not_present2 = max(entry.min_not_present2, id+1)
+}
+
 type Database struct {
 	lock    *sync.RWMutex
-	entries map[string](map[uint32]string)
+	entries map[string](*Entry)
 }
 
 func NewDatabase() Database {
-	return Database{lock: &sync.RWMutex{}, entries: make(map[string](map[uint32]string))}
+	return Database{lock: &sync.RWMutex{}, entries: make(map[string](*Entry))}
 }
 
 func (db *Database) PossessRumorMessage(msg *RumorMessage) bool {
@@ -24,7 +40,7 @@ func (db *Database) PossessRumorMessage(msg *RumorMessage) bool {
 	defer db.lock.RUnlock()
 
 	if entry, ok := db.entries[msg.Origin]; ok {
-		_, ok := entry[msg.ID]
+		_, ok := entry.messages[msg.ID]
 		return ok
 	}
 	return false
@@ -35,10 +51,10 @@ func (db *Database) InsertRumorMessage(msg *RumorMessage) {
 	defer db.lock.Unlock()
 
 	if entry, ok := db.entries[msg.Origin]; ok {
-		entry[msg.ID] = msg.Text
+		entry.Insert(msg.Text, msg.ID)
 	} else {
-		entry = make(map[uint32]string)
-		entry[msg.ID] = msg.Text
+		entry = NewEntry()
+		entry.Insert(msg.Text, msg.ID)
 		db.entries[msg.Origin] = entry
 	}
 }
@@ -47,21 +63,21 @@ func (db *Database) GetMessageContent(name string, id uint32) string {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
-	return db.entries[name][id]
+	return db.entries[name].messages[id]
 }
 
-func auxGetMinNotPresent(m map[uint32]string) uint32 {
-	return uint32(len(m) + 1)
+func auxGetMinNotPresent(m *Entry) uint32 {
+	return m.min_not_present2
+	return uint32(len(m.messages) + 1)
 }
 
 func (db *Database) GetMinNotPresent(name string) uint32 {
-	db.lock.RLock()
-	defer db.lock.RUnlock()
+	db.lock.Lock()
+	defer db.lock.Unlock()
 
 	if _, ok := db.entries[name]; !ok {
-		return uint32(1)
+		db.entries[name] = NewEntry()
 	}
-
 	return auxGetMinNotPresent(db.entries[name])
 }
 

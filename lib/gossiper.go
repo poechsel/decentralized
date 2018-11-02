@@ -111,6 +111,7 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 	if source_string != server.Address.String() {
 		go state.AddPeer(source_string)
 	}
+	fmt.Println(state.GetRoutingTableNames())
 	if packet.Simple != nil {
 		fmt.Println("SIMPLE MESSAGE", packet.Simple)
 		server.Broadcast(
@@ -275,6 +276,7 @@ func (server *Gossiper) RefreshRouteLoop(state *State) {
 				select {
 				case <-ticker.C:
 					rand_peer_address, _, err := state.getRandomPeer()
+					fmt.Println("RANDPEER", rand_peer_address)
 					if err == nil {
 						addr, _ := AddrOfString(rand_peer_address)
 						rm := &RumorMessage{

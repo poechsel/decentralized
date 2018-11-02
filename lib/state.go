@@ -166,9 +166,7 @@ the current one stored
 func (state *State) addRumorMessage(rumor *RumorMessage, sender_addr_string string) (bool, bool) {
 	minNotPresent := state.db.GetMinNotPresent(rumor.Origin)
 	isIdGreater := rumor.ID >= minNotPresent
-	if !state.db.PossessRumorMessage(rumor) &&
-		minNotPresent == rumor.ID {
-
+	if minNotPresent == rumor.ID && !state.db.PossessRumorMessage(rumor) {
 		if rumor.Text != "" {
 			state.db.InsertRumorMessage(rumor)
 		}

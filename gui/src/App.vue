@@ -174,7 +174,7 @@ export default {
             request('http://127.0.0.1:8080/message', (error, response, body) => {
                 let r = JSON.parse(body) 
                 for (var p of r) {
-                    this.messages.push(message.Rumor)
+                    this.messages.push(p.Rumor)
                 }
             })
         },
@@ -182,6 +182,7 @@ export default {
         get_new_private_messages: function() {
             request('http://127.0.0.1:8080/private', (error, response, body) => {
                 let r = JSON.parse(body) 
+                console.log(r)
                 for (var p of r) {
                     let bucket = p.Origin
                     if (bucket == this.server_name) {
@@ -241,6 +242,8 @@ export default {
         refresh: function() {
             this.load_peers()
             this.get_new_messages()
+            this.get_new_private_messages()
+            this.get_routing_table()
             this.time_last_update = new Date(Date.now())
         }
     },
