@@ -101,7 +101,7 @@ func NewWebServer(state *State, server *Gossiper, address string) *WebServer {
 			var message PrivatePost
 			json.NewDecoder(r.Body).Decode(&message)
 			private := NewPrivateMessage(websrv.nameServer, message.Content, message.To)
-			server.HandlePrivateMessage(state, server.Address.String(), &private)
+			server.HandlePointToPointMessage(state, server.Address.String(), &private)
 		}).Methods("POST")
 
 	r.HandleFunc("/id",

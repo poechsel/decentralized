@@ -51,9 +51,6 @@ func (gossip *Gossiper) SendRumor(rumor *RumorMessage, address *net.UDPAddr) {
 	fmt.Println("MONGERING with", address)
 	gossip.SendPacket(&GossipPacket{Rumor: rumor}, address)
 }
-func (gossip *Gossiper) SendPrivate(private *PrivateMessage, address *net.UDPAddr) {
-	gossip.SendPacket(&GossipPacket{Private: private}, address)
-}
 func (gossip *Gossiper) SendStatus(status *StatusPacket, address *net.UDPAddr) {
 	gossip.SendPacket(&GossipPacket{Status: status}, address)
 }
@@ -104,7 +101,7 @@ func (server *Gossiper) ClientHandler(state *State, request Packet) {
 			server.Name,
 			packet.Private.Text,
 			packet.Private.Destination)
-		go server.HandlePrivateMessage(state, server.Address.String(), &p)
+		go server.HandlePointToPointMessage(state, server.Address.String(), &p)
 	}
 }
 
@@ -138,7 +135,7 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 			packet.Rumor.Text)
 		server.HandleRumor(state, source_string, packet.Rumor)
 	} else if packet.Private != nil {
-		server.HandlePrivateMessage(state, source_string, packet.Private)
+		server.HandlePointToPointMessage(state, source_string, packet.Private)
 	}
 	fmt.Println("PEERS", state)
 }
@@ -188,22 +185,23 @@ func (server *Gossiper) HandleStatus(state *State, address string, remote_status
 	}
 }
 
-func (server *Gossiper) HandlePrivateMessage(state *State, sender_addr_string string, private *PrivateMessage) {
-	if private.Destination == server.Name {
-		fmt.Println("PRIVATE", private)
-		state.addPrivateMessage(private)
+func (server *Gossiper) HandlePointToPointMessage(state *State, sender_addr_string string, msg PointToPoint) {
+	/* This check is only to make sure that we dispatch private messages
+	sent by our current node */
+	if msg.GetOrigin() == server.Name {
+		msg.OnFirstEmission(state, sender_addr_string)
+	}
+
+	if msg.GetDestination() == server.Name {
+		msg.OnReception(state, sender_addr_string)
 	} else {
-		next, ok := private.NextHop()
-		next_address, ok2 := state.getRouteTo(private.Destination)
+		/* we make a shallow copy of msg */
+		next_msg := msg
+		ok := next_msg.NextHop()
+		next_address, ok2 := state.getRouteTo(msg.GetDestination())
 		if ok && ok2 {
 			address, _ := AddrOfString(next_address)
-			server.SendPrivate(&next, address)
-		}
-
-		/* This check is only to make sure that we dispatch private messages
-		sent by our current node */
-		if private.Origin == server.Name {
-			state.addPrivateMessage(private)
+			server.SendPacket(next_msg.ToPacket(), address)
 		}
 	}
 }

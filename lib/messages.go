@@ -65,8 +65,47 @@ func (msg PrivateMessage) String() string {
 	return "origin " + msg.Origin + " hop-limit " + fmt.Sprint(msg.HopLimit) + " contents " + msg.Text
 }
 
+/*
 func (msg PrivateMessage) NextHop() (PrivateMessage, bool) {
 	m := NewPrivateMessage(msg.Origin, msg.Text, msg.Destination)
 	m.HopLimit = msg.HopLimit - 1
-	return msg, m.HopLimit > 0
+	return m, m.HopLimit > 0
+}
+*/
+
+func (msg *PrivateMessage) ToPacket() *GossipPacket {
+	return &GossipPacket{Private: msg}
+}
+
+func (msg *PrivateMessage) GetOrigin() string {
+	return msg.Origin
+}
+
+func (msg *PrivateMessage) GetDestination() string {
+	return msg.Destination
+}
+func (msg *PrivateMessage) NextHop() bool {
+	msg.HopLimit -= 1
+	if msg.HopLimit <= 0 {
+		return false
+	} else {
+		return true
+	}
+}
+
+func (msg *PrivateMessage) OnFirstEmission(state *State, addr string) {
+	state.addPrivateMessage(msg)
+}
+func (msg *PrivateMessage) OnReception(state *State, addr string) {
+	fmt.Println("PRIVATE", msg)
+	state.addPrivateMessage(msg)
+}
+
+type PointToPoint interface {
+	GetOrigin() string
+	GetDestination() string
+	NextHop() bool
+	ToPacket() *GossipPacket
+	OnFirstEmission(*State, string)
+	OnReception(*State, string)
 }
