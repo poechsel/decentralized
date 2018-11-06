@@ -2,19 +2,20 @@ package lib
 
 import (
 	"crypto/sha256"
-	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 )
 
 func UidToHash(uid string) []byte {
-	o, _ := base64.URLEncoding.DecodeString(uid)
+	//o, _ := base64.URLEncoding.DecodeString(uid)
+	o, _ := hex.DecodeString(uid)
 	return o
 }
 
 func HashToUid(hash []byte) string {
-	return base64.URLEncoding.EncodeToString(hash)
+	return hex.EncodeToString(hash)
 }
 
 var SHAREDFOLDER string = "_SharedFiles/"
@@ -50,13 +51,17 @@ func SplitFile(file_name string) []byte {
 		metafile = append(metafile, hash[:]...)
 		uid := HashToUid(hash[:])
 
-		chunk_file, err := os.Create(TEMPFOLDER + uid)
-		if err != nil {
-			fmt.Println(err)
+		if _, err := os.Stat(TEMPFOLDER + uid); os.IsNotExist(err) {
+			chunk_file, err := os.Create(TEMPFOLDER + uid)
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				chunk_file.Write(buffer[:bytesread])
+			}
+			chunk_file.Close()
 		} else {
-			chunk_file.Write(buffer[:bytesread])
+			fmt.Println("file exists")
 		}
-		chunk_file.Close()
 	}
 	return metafile
 }
