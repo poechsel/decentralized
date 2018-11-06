@@ -20,6 +20,10 @@ type PeerId struct {
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 
+	meta := lib.SplitFile("ada.proposal")
+	lib.ReconstructFile("foo", meta)
+	return
+
 	/* Parse the command line */
 	client_port := flag.String("UIPort", "8080", "Port for the UI client")
 	gossip_addr := flag.String("gossipAddr", "127.0.0.1:5000", "ip:port for the gossiper")
