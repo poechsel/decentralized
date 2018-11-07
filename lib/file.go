@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 )
 
@@ -91,4 +92,42 @@ func ReconstructFile(out_file string, metafile []byte) {
 		}
 		chunk_file.Close()
 	}
+}
+
+func WriteMetaFile(metafile []byte) {
+	hash := sha256.Sum256(metafile)
+	uid := HashToUid(hash[:])
+	file, err := os.Create(TEMPFOLDER + uid + ".meta")
+	defer file.Close()
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		file.Write(metafile)
+	}
+}
+
+func ReadAllFile(filename string) []byte {
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		fmt.Println(err)
+		return []byte{}
+	} else {
+		return content
+	}
+}
+
+const (
+	MetaFileId  = iota
+	ChunkFileId = iota
+	NoFileId    = iota
+)
+
+func ReadFileForHash(hash []byte) (int, []byte) {
+	uid := HashToUid(hash[:])
+	if _, err := os.Stat(TEMPFOLDER + uid + ".meta"); !os.IsNotExist(err) {
+		return MetaFileId, ReadAllFile(TEMPFOLDER + uid + ".meta")
+	} else if _, err := os.Stat(TEMPFOLDER + uid); !os.IsNotExist(err) {
+		return ChunkFileId, ReadAllFile(TEMPFOLDER + uid)
+	}
+	return NoFileId, []byte{}
 }

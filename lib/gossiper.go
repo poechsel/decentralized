@@ -189,11 +189,22 @@ func (server *Gossiper) HandlePointToPointMessage(state *State, sender_addr_stri
 	/* This check is only to make sure that we dispatch private messages
 	sent by our current node */
 	if msg.GetOrigin() == server.Name {
-		msg.OnFirstEmission(state, sender_addr_string)
+		go msg.OnFirstEmission(state)
 	}
 
 	if msg.GetDestination() == server.Name {
-		msg.OnReception(state, sender_addr_string)
+		if address_origin, ok := state.getRouteTo(msg.GetOrigin()); ok && msg.GetOrigin() != server.Name {
+			address_origin_udp, _ := AddrOfString(address_origin)
+			go msg.OnReception(
+				state,
+				func(packet *GossipPacket) { go server.SendPacket(packet, address_origin_udp) },
+			)
+		} else {
+			go msg.OnReception(
+				state,
+				func(packet *GossipPacket) {},
+			)
+		}
 	} else {
 		/* we make a shallow copy of msg */
 		next_msg := msg

@@ -45,13 +45,6 @@ type PrivateMessage struct {
 	HopLimit    uint32
 }
 
-type GossipPacket struct {
-	Simple  *SimpleMessage
-	Rumor   *RumorMessage
-	Status  *StatusPacket
-	Private *PrivateMessage
-}
-
 func NewPrivateMessage(origin string, text string, destination string) PrivateMessage {
 	return PrivateMessage{
 		ID:          0,
@@ -84,6 +77,7 @@ func (msg *PrivateMessage) GetOrigin() string {
 func (msg *PrivateMessage) GetDestination() string {
 	return msg.Destination
 }
+
 func (msg *PrivateMessage) NextHop() bool {
 	msg.HopLimit -= 1
 	if msg.HopLimit <= 0 {
@@ -93,10 +87,11 @@ func (msg *PrivateMessage) NextHop() bool {
 	}
 }
 
-func (msg *PrivateMessage) OnFirstEmission(state *State, addr string) {
+func (msg *PrivateMessage) OnFirstEmission(state *State) {
 	state.addPrivateMessage(msg)
 }
-func (msg *PrivateMessage) OnReception(state *State, addr string) {
+
+func (msg *PrivateMessage) OnReception(state *State, sendReply func(*GossipPacket)) {
 	fmt.Println("PRIVATE", msg)
 	state.addPrivateMessage(msg)
 }
@@ -106,6 +101,105 @@ type PointToPoint interface {
 	GetDestination() string
 	NextHop() bool
 	ToPacket() *GossipPacket
-	OnFirstEmission(*State, string)
-	OnReception(*State, string)
+	OnFirstEmission(*State)
+	OnReception(*State, func(*GossipPacket))
+}
+
+type DataRequest struct {
+	Origin      string
+	Destination string
+	HopLimit    uint32
+	HashValue   []byte
+}
+
+type DataReply struct {
+	Origin      string
+	Destination string
+	HopLimit    uint32
+	HashValue   []byte
+	Data        []byte
+}
+type GossipPacket struct {
+	Simple      *SimpleMessage
+	Rumor       *RumorMessage
+	Status      *StatusPacket
+	Private     *PrivateMessage
+	DataRequest *DataRequest
+	DataReply   *DataReply
+}
+
+func NewDataRequest(origin string, destination string, hash []byte) *DataRequest {
+	o := DataRequest{
+		Origin:      origin,
+		Destination: destination,
+		HashValue:   hash,
+		HopLimit:    10,
+	}
+	return &o
+}
+
+func (msg *DataRequest) ToPacket() *GossipPacket {
+	return &GossipPacket{DataRequest: msg}
+}
+
+func (msg *DataRequest) GetOrigin() string {
+	return msg.Origin
+}
+
+func (msg *DataRequest) GetDestination() string {
+	return msg.Destination
+}
+
+func (msg *DataRequest) NextHop() bool {
+	msg.HopLimit -= 1
+	if msg.HopLimit <= 0 {
+		return false
+	} else {
+		return true
+	}
+}
+
+func (msg *DataRequest) OnFirstEmission(state *State) {
+}
+
+func (msg *DataRequest) OnReception(state *State, sendReply func(*GossipPacket)) {
+	if _, data := ReadFileForHash(msg.HashValue); len(data) > 0 {
+		reply := NewDataReply(msg.Origin, msg.Destination, msg.HashValue, data)
+		sendReply(reply.ToPacket())
+	}
+}
+
+func (msg *DataReply) ToPacket() *GossipPacket {
+	return &GossipPacket{DataReply: msg}
+}
+
+func (msg *DataReply) GetOrigin() string {
+	return msg.Origin
+}
+
+func (msg *DataReply) GetDestination() string {
+	return msg.Destination
+}
+
+func NewDataReply(origin string, destination string, hash []byte, data []byte) *DataReply {
+	o := DataReply{
+		Origin:      origin,
+		Destination: destination,
+		HashValue:   hash,
+		HopLimit:    10,
+		Data:        data,
+	}
+	return &o
+}
+
+func (msg *DataReply) NextHop() bool {
+	msg.HopLimit -= 1
+	if msg.HopLimit <= 0 {
+		return false
+	} else {
+		return true
+	}
+}
+
+func (msg *DataReply) OnFirstEmission(state *State) {
 }
