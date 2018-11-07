@@ -13,6 +13,11 @@ type Message struct {
 	Rumor   RumorMessage
 }
 
+type DataAckKey struct {
+	Hash string
+	Peer string
+}
+
 /* The State contains all knowledge we have about the world.
 This include the messages, the peers...
 */
@@ -34,6 +39,43 @@ type State struct {
 	addMessageChannels        [](chan Message)
 	addPrivateMessageChannels [](chan PrivateMessage)
 	addPeerChannels           [](chan string)
+
+	lockDataAck *sync.Mutex
+	dataAck     map[DataAckKey]Stack
+}
+
+func (state *State) DispatchDataAck(peer string, hash string, ack DataReply) bool {
+	state.lockDataAck.Lock()
+	defer state.lockDataAck.Unlock()
+	key := DataAckKey{Peer: peer, Hash: hash}
+	if s, ok := state.dataAck[key]; ok {
+		if s.Empty() {
+			return false
+		} else {
+			c := s.Pop().(chan DataReply)
+			c <- ack
+			if s.Empty() {
+				delete(state.dataAck, key)
+			}
+			return true
+		}
+	} else {
+		return false
+	}
+}
+
+func (state *State) AddDataAck(peer string, hash string, c chan DataReply) {
+	state.lockDataAck.Lock()
+	defer state.lockDataAck.Unlock()
+	key := DataAckKey{Peer: peer, Hash: hash}
+	if s, ok := state.dataAck[key]; ok {
+		s.Push(c)
+		state.dataAck[key] = s
+	} else {
+		s := NewStack()
+		s.Push(c)
+		state.dataAck[key] = *s
+	}
 }
 
 func (state *State) GetRoutingTableNames() []string {
@@ -54,6 +96,8 @@ func NewState() *State {
 		lock_peers:   &sync.RWMutex{},
 		lock_routing: &sync.RWMutex{},
 		routing:      make(map[string]string),
+		lockDataAck:  &sync.Mutex{},
+		dataAck:      make(map[DataAckKey]Stack),
 	}
 	return state
 }
