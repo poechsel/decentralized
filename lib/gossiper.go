@@ -207,6 +207,7 @@ func (server *Gossiper) SendReplyWaitAnswer(state *State, peer string, hash []by
 func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte, out_file string) {
 	metafilereply := server.SendReplyWaitAnswer(state, peer, metahash)
 	metafile := metafilereply.Data
+	fmt.Println("DOWNLOADING metafile of", out_file, "from", peer)
 	go WriteMetaFile(metafile)
 	nparts := len(metafile) / 32
 	var wg sync.WaitGroup
@@ -217,11 +218,13 @@ func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte,
 			hash := metafile[i : i+32]
 			chunk := server.SendReplyWaitAnswer(state, peer, hash)
 			WriteChunkFile(chunk.Data)
+			fmt.Println("DOWNLOADING", out_file, "chunk", i+1, "from", peer)
 			wg.Done()
 		}()
 	}
 	wg.Wait()
 	ReconstructFile(out_file, metafile)
+	fmt.Println("RECONSTRUCTED file", out_file)
 }
 
 // path is relative to share folder
