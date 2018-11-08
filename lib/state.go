@@ -49,22 +49,28 @@ func (state *State) DispatchDataAck(peer string, hash string, ack DataReply) boo
 	defer state.lockDataAck.Unlock()
 	key := DataAckKey{Peer: peer, Hash: hash}
 	if s, ok := state.dataAck[key]; ok {
-		if s.Empty() {
-			return false
-		} else {
-			c := s.Pop().(chan DataReply)
-			c <- ack
+		var has_dispatched bool = false
+		for {
 			if s.Empty() {
-				delete(state.dataAck, key)
+				break
+			} else {
+				c := s.Pop().(AckRequest)
+				if c.SendAck(ack) {
+					has_dispatched = true
+					break
+				}
 			}
-			return true
 		}
+		if s.Empty() {
+			delete(state.dataAck, key)
+		}
+		return has_dispatched
 	} else {
 		return false
 	}
 }
 
-func (state *State) AddDataAck(peer string, hash string, c chan DataReply) {
+func (state *State) AddDataAck(peer string, hash string, c AckRequest) {
 	state.lockDataAck.Lock()
 	defer state.lockDataAck.Unlock()
 	key := DataAckKey{Peer: peer, Hash: hash}

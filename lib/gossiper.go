@@ -5,6 +5,7 @@ import (
 	"github.com/dedis/protobuf"
 	"math/rand"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -183,6 +184,50 @@ func (server *Gossiper) HandleStatus(state *State, address string, remote_status
 		fmt.Println("IN SYNC WITH", address)
 		return false
 	}
+}
+
+func (server *Gossiper) SendReplyWaitAnswer(state *State, peer string, hash []byte) DataReply {
+	dataRequest := NewDataRequest(server.Name, peer, hash)
+	ackr := NewAckRequest()
+	state.AddDataAck(peer, HashToUid(hash), *ackr)
+	for {
+		go server.HandlePointToPointMessage(state, server.Address.String(), dataRequest)
+		timeout := time.NewTimer(5 * time.Second)
+		select {
+		case <-timeout.C:
+			server.SendReplyWaitAnswer(state, peer, hash)
+		case r := <-ackr.AckChannel:
+			ackr.Close()
+			return r.(DataReply)
+		}
+	}
+}
+
+//out_file is relative to the download folder
+func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte, out_file string) {
+	metafilereply := server.SendReplyWaitAnswer(state, peer, metahash)
+	metafile := metafilereply.Data
+	go WriteMetaFile(metafile)
+	nparts := len(metafile) / 32
+	var wg sync.WaitGroup
+	wg.Add(nparts)
+
+	for i := 0; i < len(metafile); i += 32 {
+		go func() {
+			hash := metafile[i : i+32]
+			chunk := server.SendReplyWaitAnswer(state, peer, hash)
+			WriteChunkFile(chunk.Data)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	ReconstructFile(out_file, metafile)
+}
+
+// path is relative to share folder
+func (server *Gossiper) UploadFile(path string) {
+	metafile := SplitFile(path)
+	WriteMetaFile(metafile)
 }
 
 func (server *Gossiper) HandlePointToPointMessage(state *State, sender_addr_string string, msg PointToPoint) {

@@ -93,17 +93,25 @@ func ReconstructFile(out_file string, metafile []byte) {
 		chunk_file.Close()
 	}
 }
-
-func WriteMetaFile(metafile []byte) {
-	hash := sha256.Sum256(metafile)
-	uid := HashToUid(hash[:])
-	file, err := os.Create(TEMPFOLDER + uid + ".meta")
+func WriteFile(name string, data []byte) {
+	file, err := os.Create(name)
 	defer file.Close()
 	if err != nil {
 		fmt.Println(err)
 	} else {
-		file.Write(metafile)
+		file.Write(data)
 	}
+}
+
+func WriteMetaFile(metafile []byte) {
+	hash := sha256.Sum256(metafile)
+	uid := HashToUid(hash[:])
+	WriteFile(TEMPFOLDER+uid+".meta", metafile)
+}
+func WriteChunkFile(chunk []byte) {
+	hash := sha256.Sum256(chunk)
+	uid := HashToUid(hash[:])
+	WriteFile(TEMPFOLDER+uid, chunk)
 }
 
 func ReadAllFile(filename string) []byte {
