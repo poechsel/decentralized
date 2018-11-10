@@ -103,6 +103,13 @@ func (server *Gossiper) ClientHandler(state *State, request Packet) {
 			packet.Private.Text,
 			packet.Private.Destination)
 		go server.HandlePointToPointMessage(state, server.Address.String(), &p)
+	} else if packet.DataRequest != nil {
+		go server.UploadFile(packet.DataRequest.Origin)
+	} else if packet.DataReply != nil {
+		go server.DownloadFile(state,
+			packet.DataReply.Destination,
+			packet.DataReply.HashValue,
+			packet.DataReply.Origin)
 	}
 }
 
@@ -137,6 +144,10 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 		server.HandleRumor(state, source_string, packet.Rumor)
 	} else if packet.Private != nil {
 		server.HandlePointToPointMessage(state, source_string, packet.Private)
+	} else if packet.DataReply != nil {
+		go server.HandlePointToPointMessage(state, source_string, packet.DataReply)
+	} else if packet.DataRequest != nil {
+		go server.HandlePointToPointMessage(state, source_string, packet.DataRequest)
 	}
 	fmt.Println("PEERS", state)
 }

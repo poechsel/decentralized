@@ -203,3 +203,7 @@ func (msg *DataReply) NextHop() bool {
 
 func (msg *DataReply) OnFirstEmission(state *State) {
 }
+
+func (msg *DataReply) OnReception(state *State, sendReply func(*GossipPacket)) {
+	state.DispatchDataAck(msg.Origin, HashToUid(msg.HashValue), *msg)
+}
