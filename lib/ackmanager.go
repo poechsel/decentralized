@@ -8,20 +8,21 @@ other is used as an indicator of the fact that the first
 is closed */
 type AckRequest struct {
 	AckChannel chan interface{}
-	isClosed   chan bool
+	isClosed   bool
 }
 
 func NewAckRequest() *AckRequest {
-	return &AckRequest{AckChannel: make(chan interface{}), isClosed: make(chan bool)}
+	x := AckRequest{AckChannel: make(chan interface{}), isClosed: false}
+	return &x
 }
 
 func (ack *AckRequest) Close() {
 	close(ack.AckChannel)
-	close(ack.isClosed)
+	ack.isClosed = true
 }
 
 func (ackr *AckRequest) SendAck(ack interface{}) bool {
-	if _, ok := <-ackr.isClosed; ok {
+	if !ackr.isClosed {
 		ackr.AckChannel <- ack
 		return true
 	} else {

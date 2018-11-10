@@ -20,9 +20,14 @@ func HashToUid(hash []byte) string {
 }
 
 var SHAREDFOLDER string = "_SharedFiles/"
-var TEMPFOLDER = "_tmp/"
+var TEMPFOLDER string = "_tmp/"
 var FILECHUNKSIZE int = 8 * 1024
 var DOWNLOADFOLDER string = "_Downloads/"
+
+func InitializeTempDir(server_name string) {
+	TEMPFOLDER = "_tmp_" + server_name + "/"
+	os.MkdirAll(TEMPFOLDER, os.ModePerm)
+}
 
 /* TODO: launch several goroutines reading separate chunk of the file
 to go faster */
@@ -131,8 +136,11 @@ const (
 )
 
 func ReadFileForHash(hash []byte) (int, []byte) {
-	uid := HashToUid(hash[:])
+	uid := HashToUid(hash)
+	fmt.Println("testing existence of ", TEMPFOLDER+uid+".meta")
+	fmt.Println("testing existence of ", TEMPFOLDER+uid)
 	if _, err := os.Stat(TEMPFOLDER + uid + ".meta"); !os.IsNotExist(err) {
+		fmt.Println("found")
 		return MetaFileId, ReadAllFile(TEMPFOLDER + uid + ".meta")
 	} else if _, err := os.Stat(TEMPFOLDER + uid); !os.IsNotExist(err) {
 		return ChunkFileId, ReadAllFile(TEMPFOLDER + uid)

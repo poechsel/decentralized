@@ -45,6 +45,7 @@ type State struct {
 }
 
 func (state *State) DispatchDataAck(peer string, hash string, ack DataReply) bool {
+	fmt.Println(ack)
 	state.lockDataAck.Lock()
 	defer state.lockDataAck.Unlock()
 	key := DataAckKey{Peer: peer, Hash: hash}
@@ -54,8 +55,10 @@ func (state *State) DispatchDataAck(peer string, hash string, ack DataReply) boo
 			if s.Empty() {
 				break
 			} else {
+				fmt.Println("in table")
 				c := s.Pop().(AckRequest)
 				if c.SendAck(ack) {
+					fmt.Println("dispatched")
 					has_dispatched = true
 					break
 				}

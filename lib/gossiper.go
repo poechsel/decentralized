@@ -3,6 +3,7 @@ package lib
 import (
 	"fmt"
 	"github.com/dedis/protobuf"
+	"log"
 	"math/rand"
 	"net"
 	"sync"
@@ -104,8 +105,10 @@ func (server *Gossiper) ClientHandler(state *State, request Packet) {
 			packet.Private.Destination)
 		go server.HandlePointToPointMessage(state, server.Address.String(), &p)
 	} else if packet.DataRequest != nil {
+		fmt.Println("REQUESTING INDEXING filename", packet.DataRequest.Origin)
 		go server.UploadFile(packet.DataRequest.Origin)
 	} else if packet.DataReply != nil {
+		fmt.Println("REQUESTING filename", packet.DataReply.Origin, "from", packet.DataReply.Destination, "hash", HashToUid(packet.DataReply.HashValue))
 		go server.DownloadFile(state,
 			packet.DataReply.Destination,
 			packet.DataReply.HashValue,
@@ -206,7 +209,7 @@ func (server *Gossiper) SendReplyWaitAnswer(state *State, peer string, hash []by
 		timeout := time.NewTimer(5 * time.Second)
 		select {
 		case <-timeout.C:
-			server.SendReplyWaitAnswer(state, peer, hash)
+			continue
 		case r := <-ackr.AckChannel:
 			ackr.Close()
 			return r.(DataReply)
@@ -225,13 +228,13 @@ func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte,
 	wg.Add(nparts)
 
 	for i := 0; i < len(metafile); i += 32 {
-		go func() {
+		go func(i int) {
 			hash := metafile[i : i+32]
 			chunk := server.SendReplyWaitAnswer(state, peer, hash)
 			WriteChunkFile(chunk.Data)
 			fmt.Println("DOWNLOADING", out_file, "chunk", i+1, "from", peer)
 			wg.Done()
-		}()
+		}(i)
 	}
 	wg.Wait()
 	ReconstructFile(out_file, metafile)
@@ -251,12 +254,17 @@ func (server *Gossiper) HandlePointToPointMessage(state *State, sender_addr_stri
 		go msg.OnFirstEmission(state)
 	}
 
+	log.Println("PTP", msg.GetDestination(), "=", server.Name)
+
 	if msg.GetDestination() == server.Name {
-		if address_origin, ok := state.getRouteTo(msg.GetOrigin()); ok && msg.GetOrigin() != server.Name {
+		if address_origin, ok := state.getRouteTo(msg.GetOrigin()); ok {
 			address_origin_udp, _ := AddrOfString(address_origin)
 			go msg.OnReception(
 				state,
-				func(packet *GossipPacket) { go server.SendPacket(packet, address_origin_udp) },
+				func(packet *GossipPacket) {
+					log.Println("sending answer back to ", msg.GetOrigin(), address_origin_udp)
+					go server.SendPacket(packet, address_origin_udp)
+				},
 			)
 		} else {
 			go msg.OnReception(

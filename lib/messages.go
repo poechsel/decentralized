@@ -2,6 +2,7 @@ package lib
 
 import (
 	"fmt"
+	"log"
 )
 
 type RumorMessage struct {
@@ -163,8 +164,10 @@ func (msg *DataRequest) OnFirstEmission(state *State) {
 }
 
 func (msg *DataRequest) OnReception(state *State, sendReply func(*GossipPacket)) {
+	log.Println("RECEIVED", HashToUid(msg.HashValue))
 	if _, data := ReadFileForHash(msg.HashValue); len(data) > 0 {
-		reply := NewDataReply(msg.Origin, msg.Destination, msg.HashValue, data)
+		log.Println("sending")
+		reply := NewDataReply(msg.Destination, msg.Origin, msg.HashValue, data)
 		sendReply(reply.ToPacket())
 	}
 }
@@ -204,6 +207,11 @@ func (msg *DataReply) NextHop() bool {
 func (msg *DataReply) OnFirstEmission(state *State) {
 }
 
+func (msg DataReply) String() string {
+	return msg.Origin + " -> " + msg.GetDestination() + "  " + HashToUid(msg.HashValue)
+}
+
 func (msg *DataReply) OnReception(state *State, sendReply func(*GossipPacket)) {
+	log.Println("reception ack")
 	state.DispatchDataAck(msg.Origin, HashToUid(msg.HashValue), *msg)
 }
