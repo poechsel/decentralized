@@ -71,8 +71,6 @@ func SplitFile(file_name string) []byte {
 				chunk_file.Write(buffer[:bytesread])
 			}
 			chunk_file.Close()
-		} else {
-			fmt.Println("file exists")
 		}
 	}
 	return metafile
@@ -119,6 +117,7 @@ func WriteMetaFile(metafile []byte) {
 	uid := HashToUid(hash[:])
 	WriteFile(TEMPFOLDER+uid+".meta", metafile)
 }
+
 func WriteChunkFile(chunk []byte) {
 	hash := sha256.Sum256(chunk)
 	uid := HashToUid(hash[:])
@@ -143,10 +142,7 @@ const (
 
 func ReadFileForHash(hash []byte) (int, []byte) {
 	uid := HashToUid(hash)
-	fmt.Println("testing existence of ", TEMPFOLDER+uid+".meta")
-	fmt.Println("testing existence of ", TEMPFOLDER+uid)
 	if _, err := os.Stat(TEMPFOLDER + uid + ".meta"); !os.IsNotExist(err) {
-		fmt.Println("found")
 		return MetaFileId, ReadAllFile(TEMPFOLDER + uid + ".meta")
 	} else if _, err := os.Stat(TEMPFOLDER + uid); !os.IsNotExist(err) {
 		return ChunkFileId, ReadAllFile(TEMPFOLDER + uid)

@@ -3,7 +3,6 @@ package lib
 import (
 	"fmt"
 	"github.com/dedis/protobuf"
-	"log"
 	"math/rand"
 	"net"
 	"sync"
@@ -254,15 +253,12 @@ func (server *Gossiper) HandlePointToPointMessage(state *State, sender_addr_stri
 		go msg.OnFirstEmission(state)
 	}
 
-	log.Println("PTP", msg.GetDestination(), "=", server.Name)
-
 	if msg.GetDestination() == server.Name {
 		if address_origin, ok := state.getRouteTo(msg.GetOrigin()); ok {
 			address_origin_udp, _ := AddrOfString(address_origin)
 			go msg.OnReception(
 				state,
 				func(packet *GossipPacket) {
-					log.Println("sending answer back to ", msg.GetOrigin(), address_origin_udp)
 					go server.SendPacket(packet, address_origin_udp)
 				},
 			)
