@@ -7,7 +7,7 @@
           <div class="level">
             <div class="level-left">
               <b-taglist attached>
-                <b-tag type="is-info">{{message.Origin}}</b-tag>
+                <b-tag type="is-primary">{{message.Origin}}</b-tag>
                 <b-tag type="is-light">{{message.ID}}</b-tag>
               </b-taglist>
             </div>
@@ -27,7 +27,7 @@
                v-model="new_message">
       </div>
       <div class="control">
-        <a class="button is-info" v-on:click="add_message">
+        <a class="button is-primary" v-on:click="add_message">
           Send
         </a>
       </div>

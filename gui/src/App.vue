@@ -19,7 +19,7 @@
         -->
     
     <div class="tile is-ancestor">
-      <div class="tile is-vertical is-8 is-parent">
+      <div class="tile is-vertical is-9 is-parent">
         
         <div class="tile is-child card" >
           <header class="card-header">
@@ -27,7 +27,7 @@
               <div class="level-left">
                 <div style="width: 20px"></div>
                 <b-dropdown>
-                  <button class="button is-light" slot="trigger">
+                  <button class="button" slot="trigger">
                     <i class="fas fa-plus"></i>
                     <b-icon icon="menu-down"></b-icon>
                   </button>
@@ -53,17 +53,17 @@
                           @submit-message='(content) => {add_message(content)}'>
                 </messages>
               </b-tab-item>
-
+              
               <b-tab-item
                 icon="user" iconPack="fa"
                 v-for="peer in opened_private_channels"
                 :label="peer" :key="peer">
                 <messages :messages="private_channels[peer]"
                           @submit-message='(content) => {add_private_message(peer, content)}'>
-                          >
+                  >
                 </messages>
               </b-tab-item>
-
+              
             </b-tabs>
           </div>
         </div>
@@ -85,7 +85,7 @@
             at address <strong> {{server.address}} </strong>
           </div>
         </div>
-
+        
         <div class="card is-child tile">
           <header class="card-header">
             <p class="card-header-title">
@@ -102,56 +102,84 @@
                        v-model="new_peer_address">
               </div>
               <div class="control">
-                <a class="button is-info" v-on:click="add_peer">
+                <a class="button is-primary" v-on:click="add_peer">
                   Add peer
                 </a>
               </div>
             </div>
-            </div>
-            </div>
-            
           </div>
         </div>
+        
+        <div class="tile is-child card"  style="flex-grow: 0">
+          <header class="card-header">
+            <p class="card-header-title">
+              File
+            </p>
+          </header>
+          <div class="card-content">
+            <b-field class="file">
+              <b-upload v-on:input="upload_file" style="width: 100%">
+                <a class="button is-fullwidth">
+                <b-icon icon="upload"></b-icon> <span>Upload</span>
+                </a>
+              </b-upload>
+            </b-field>
+            <div class="field">
+              <a class="button is-fullwidth" @click="isComponentModalActive = true">
+                <b-icon icon="download"></b-icon> <span>Download</span>
+                </a>
+            </div>
+            <b-modal :active.sync="isComponentModalActive" has-modal-card>
+              <file-download :peers="routing_table"></file-download>
+            </b-modal>
+
+          </div>
+        </div>
+        
       </div>
     </div>
+  </div>
+</div>
 </template>
 
 <script>
 import Messages from './components/Messages.vue'
+import FileDownload from './components/FileDownload.vue'
 
 var request = require('request')
- //var x = {'Origin': "foo", 'ID': "4", 'Text': "I am a text"}
- //var foo = [x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x]
- 
- /* eslint-disable */
- export default {
-     name: 'app',
-     components: {
-         Messages
-     },
-     data () {
-         return {
-             server:{address: "Unknown", name:"Unknown"},
-             peers_dns: {},
-             peers: [],
-             routing_table: ["d", "a", "b", "c"],
-             new_peer_address: "",
-             new_message: "",
-             messages: [],
-             time_last_update: new Date(Date.now()),
-             opened_private_channels: [],
-             private_channels: {},
-             opened_channel: 0,
-         }
-     },
-     methods: {
-         open_private_channel: function(peer) {
-             if (this.opened_private_channels.includes(peer)) {
-                 return
-             }
-             this.opened_private_channels.push(peer)
-             this.$nextTick(function() {
-                 this.opened_channel = this.opened_private_channels.length
+//var x = {'Origin': "foo", 'ID': "4", 'Text': "I am a text"}
+//var foo = [x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x]
+
+/* eslint-disable */
+export default {
+    name: 'app',
+    components: {
+        Messages,
+        FileDownload
+    },
+    data () {
+        return {
+            server:{address: "Unknown", name:"Unknown"},
+            peers_dns: {},
+            peers: [],
+            routing_table: ["d", "a", "b", "c"],
+            new_peer_address: "",
+            new_message: "",
+            messages: [],
+            time_last_update: new Date(Date.now()),
+            opened_private_channels: [],
+            private_channels: {},
+            opened_channel: 0,
+        }
+    },
+    methods: {
+        open_private_channel: function(peer) {
+            if (this.opened_private_channels.includes(peer)) {
+                return
+            }
+            this.opened_private_channels.push(peer)
+            this.$nextTick(function() {
+                this.opened_channel = this.opened_private_channels.length
             })
             if (!(peer in this.private_channels))
                 this.private_channels[peer] = []
@@ -199,7 +227,15 @@ var request = require('request')
                 }
             })
         },
-
+        
+        upload_file: function(file) {
+            request.post({
+                headers: {'content-type' : 'application/json'},
+                url:     'http://127.0.0.1:8080/upload',
+                body:    JSON.stringify(file.name)
+            }, function(error, response, body){
+            });
+        },
         
         
         get_routing_table: function() {
