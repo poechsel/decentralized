@@ -27,7 +27,7 @@
                 <b-input
                   v-model="hashvalue"
                   placeholder="Hash of the metafile"
-                  maxlength=32
+                  maxlength=64
                   required>
                 </b-input>
               </b-field>

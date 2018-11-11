@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"regexp"
 )
 
 func UidToHash(uid string) []byte {
@@ -17,6 +18,11 @@ func UidToHash(uid string) []byte {
 
 func HashToUid(hash []byte) string {
 	return hex.EncodeToString(hash)
+}
+
+func UidIsValidHash(uid string) bool {
+	out, _ := regexp.MatchString("[a-f0-9A-F]{64}", uid)
+	return out
 }
 
 var SHAREDFOLDER string = "_SharedFiles/"

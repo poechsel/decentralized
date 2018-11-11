@@ -13,6 +13,12 @@ type PrivatePost struct {
 	Content string
 }
 
+type FileRequest struct {
+	Peer      string
+	HashValue string
+	Filename  string
+}
+
 type WebServer struct {
 	server                   *http.Server
 	AddPeerChannel           chan string
@@ -102,6 +108,22 @@ func NewWebServer(state *State, server *Gossiper, address string) *WebServer {
 			json.NewDecoder(r.Body).Decode(&message)
 			private := NewPrivateMessage(websrv.nameServer, message.Content, message.To)
 			server.HandlePointToPointMessage(state, server.Address.String(), &private)
+		}).Methods("POST")
+
+	r.HandleFunc("/upload",
+		func(_ http.ResponseWriter, r *http.Request) {
+			var message string
+			json.NewDecoder(r.Body).Decode(&message)
+			go server.UploadFile(message)
+		}).Methods("POST")
+
+	r.HandleFunc("/download",
+		func(_ http.ResponseWriter, r *http.Request) {
+			var message FileRequest
+			json.NewDecoder(r.Body).Decode(&message)
+			if UidIsValidHash(message.HashValue) {
+				go server.DownloadFile(state, message.Peer, UidToHash(message.HashValue), message.Filename)
+			}
 		}).Methods("POST")
 
 	r.HandleFunc("/id",
