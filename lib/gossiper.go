@@ -105,7 +105,7 @@ func (server *Gossiper) ClientHandler(state *State, request Packet) {
 		go server.HandlePointToPointMessage(state, server.Address.String(), &p)
 	} else if packet.DataRequest != nil {
 		fmt.Println("REQUESTING INDEXING filename", packet.DataRequest.Origin)
-		go server.UploadFile(packet.DataRequest.Origin)
+		go server.UploadFile(state, packet.DataRequest.Origin)
 	} else if packet.DataReply != nil {
 		fmt.Println("REQUESTING filename", packet.DataReply.Origin, "from", packet.DataReply.Destination, "hash", HashToUid(packet.DataReply.HashValue))
 		go server.DownloadFile(state,
@@ -222,6 +222,8 @@ func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte,
 	metafile := metafilereply.Data
 	fmt.Println("DOWNLOADING metafile of", out_file, "from", peer)
 	go WriteMetaFile(metafile)
+	metahashstring := GetMetaHash(metafile)
+	state.FileManager.AddFile(out_file, metahashstring)
 	nparts := len(metafile) / 32
 	var wg sync.WaitGroup
 	wg.Add(nparts)
@@ -229,8 +231,10 @@ func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte,
 	for i := 0; i < len(metafile); i += 32 {
 		go func(i int) {
 			hash := metafile[i : i+32]
+			chunkhashstring := HashToUid(hash)
 			chunk := server.SendReplyWaitAnswer(state, peer, hash)
 			WriteChunkFile(chunk.Data)
+			state.FileManager.AddChunk(metahashstring, chunkhashstring)
 			fmt.Println("DOWNLOADING", out_file, "chunk", i+1, "from", peer)
 			wg.Done()
 		}(i)
@@ -241,8 +245,16 @@ func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte,
 }
 
 // path is relative to share folder
-func (server *Gossiper) UploadFile(path string) {
+func (server *Gossiper) UploadFile(state *State, path string) {
 	metafile := SplitFile(path)
+
+	metahashstring := GetMetaHash(metafile)
+	state.FileManager.AddFile(path, metahashstring)
+	for i := 0; i < len(metafile); i += 32 {
+		hash := metafile[i : i+32]
+		chunkhashstring := HashToUid(hash)
+		state.FileManager.AddChunk(metahashstring, chunkhashstring)
+	}
 	WriteMetaFile(metafile)
 }
 

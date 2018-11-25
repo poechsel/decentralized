@@ -42,6 +42,8 @@ type State struct {
 
 	lockDataAck *sync.Mutex
 	dataAck     map[DataAckKey]Stack
+
+	FileManager *FileManager
 }
 
 func (state *State) DispatchDataAck(peer string, hash string, ack DataReply) bool {
@@ -104,6 +106,7 @@ func NewState() *State {
 		routing:      make(map[string]string),
 		lockDataAck:  &sync.Mutex{},
 		dataAck:      make(map[DataAckKey]Stack),
+		FileManager:  NewFileManager(),
 	}
 	return state
 }

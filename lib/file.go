@@ -112,9 +112,13 @@ func WriteFile(name string, data []byte) {
 	}
 }
 
-func WriteMetaFile(metafile []byte) {
+func GetMetaHash(metafile []byte) string {
 	hash := sha256.Sum256(metafile)
-	uid := HashToUid(hash[:])
+	return HashToUid(hash[:])
+}
+
+func WriteMetaFile(metafile []byte) {
+	uid := GetMetaHash(metafile)
 	WriteFile(TEMPFOLDER+uid+".meta", metafile)
 }
 

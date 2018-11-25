@@ -114,7 +114,7 @@ func NewWebServer(state *State, server *Gossiper, address string) *WebServer {
 		func(_ http.ResponseWriter, r *http.Request) {
 			var message string
 			json.NewDecoder(r.Body).Decode(&message)
-			go server.UploadFile(message)
+			go server.UploadFile(state, message)
 		}).Methods("POST")
 
 	r.HandleFunc("/download",
