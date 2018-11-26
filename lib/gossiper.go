@@ -112,6 +112,8 @@ func (server *Gossiper) ClientHandler(state *State, request Packet) {
 			packet.DataReply.Destination,
 			packet.DataReply.HashValue,
 			packet.DataReply.Origin)
+	} else if packet.SearchRequest != nil {
+		go server.HandleSearchRequest(state, server.Address.String(), packet.SearchRequest)
 	}
 }
 
@@ -150,6 +152,8 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 		go server.HandlePointToPointMessage(state, source_string, packet.DataReply)
 	} else if packet.DataRequest != nil {
 		go server.HandlePointToPointMessage(state, source_string, packet.DataRequest)
+	} else if packet.SearchRequest != nil {
+		go server.HandleSearchRequest(state, source_string, packet.SearchRequest)
 	}
 	fmt.Println("PEERS", state)
 }
@@ -256,6 +260,12 @@ func (server *Gossiper) UploadFile(state *State, path string) {
 		state.FileManager.AddChunk(metahashstring, chunkhashstring)
 	}
 	WriteMetaFile(metafile)
+}
+
+func (server *Gossiper) HandleSearchRequest(state *State, sender_addr_string string, msg *SearchRequest) {
+	if !state.searchRequestCacher.CanTreat(msg) {
+		return
+	}
 }
 
 func (server *Gossiper) HandlePointToPointMessage(state *State, sender_addr_string string, msg PointToPoint) {
