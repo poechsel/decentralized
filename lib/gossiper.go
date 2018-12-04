@@ -161,13 +161,12 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 func (server *Gossiper) RumorMonger(state *State, address string, rumor *RumorMessage) {
 	decision := rand.Int() % 2
 	if decision == 1 {
-		random_addr, _, err := state.getRandomPeer(address)
+		rand_peer, err := state.getRandomPeer(address)
 		if err != nil {
 			return
 		}
-		fmt.Println("FLIPPED COIN sending rumor to", random_addr)
-		addr, _ := AddrOfString(random_addr)
-		server.SendRumor(rumor, addr)
+		fmt.Println("FLIPPED COIN sending rumor to", rand_peer.Address)
+		server.SendRumor(rumor, rand_peer.Address)
 	} else {
 		// stop mongering
 		return
@@ -253,13 +252,13 @@ func (server *Gossiper) UploadFile(state *State, path string) {
 	metafile := SplitFile(path)
 
 	metahashstring := GetMetaHash(metafile)
+	WriteMetaFile(metafile)
 	state.FileManager.AddFile(path, metahashstring)
 	for i := 0; i < len(metafile); i += 32 {
 		hash := metafile[i : i+32]
 		chunkhashstring := HashToUid(hash)
 		state.FileManager.AddChunk(metahashstring, chunkhashstring)
 	}
-	WriteMetaFile(metafile)
 }
 
 func (server *Gossiper) HandleSearchRequest(state *State, sender_addr_string string, msg *SearchRequest) {
@@ -320,12 +319,11 @@ func (server *Gossiper) HandleRumor(state *State, sender_addr_string string, rum
 	/* If we added a message, we then wait for an ack and
 	rumormonger if needed */
 	if message_added {
-		rand_peer_address, rand_peer, err := state.getRandomPeer(sender_addr_string)
+		rand_peer, err := state.getRandomPeer(sender_addr_string)
 		if err != nil {
 			server.RumorMonger(state, sender_addr_string, rumor)
 		} else {
-			addr, _ := AddrOfString(rand_peer_address)
-			server.SendRumor(rumor, addr)
+			server.SendRumor(rumor, rand_peer.Address)
 			rand_peer.RequestStatus()
 			timer := time.NewTicker(time.Second)
 
@@ -335,7 +333,7 @@ func (server *Gossiper) HandleRumor(state *State, sender_addr_string string, rum
 				timer.Stop()
 				server.RumorMonger(state, sender_addr_string, rumor)
 			case ack := <-rand_peer.Status_channel:
-				if !server.HandleStatus(state, rand_peer_address, ack.Want) {
+				if !server.HandleStatus(state, rand_peer.Address.String(), ack.Want) {
 					server.RumorMonger(state, sender_addr_string, rumor)
 				}
 			}
@@ -349,13 +347,12 @@ func (server *Gossiper) AntiEntropy(state *State) {
 		for {
 			select {
 			case <-ticker.C:
-				rand_peer_address, _, err := state.getRandomPeer()
+				rand_peer, err := state.getRandomPeer()
 				if err == nil {
-					addr, _ := AddrOfString(rand_peer_address)
 					self_status := state.db.GetPeerStatus()
 					server.SendStatus(
 						&StatusPacket{Want: self_status},
-						addr)
+						rand_peer.Address)
 				}
 			}
 		}
@@ -377,11 +374,10 @@ func (server *Gossiper) RefreshRouteLoop(state *State) {
 			for {
 				select {
 				case <-ticker.C:
-					rand_peer_address, _, err := state.getRandomPeer()
+					rand_peer, err := state.getRandomPeer()
 					if err == nil {
-						addr, _ := AddrOfString(rand_peer_address)
 						rm := server.createRouteRefresh(state)
-						server.SendRumor(rm, addr)
+						server.SendRumor(rm, rand_peer.Address)
 					}
 				}
 			}
