@@ -226,8 +226,8 @@ func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte,
 	fmt.Println("DOWNLOADING metafile of", out_file, "from", peer)
 	go WriteMetaFile(metafile)
 	metahashstring := GetMetaHash(metafile)
-	state.FileManager.AddFile(out_file, metahashstring)
 	nparts := len(metafile) / 32
+	state.FileManager.AddFile(out_file, metahashstring, uint64(nparts))
 	var wg sync.WaitGroup
 	wg.Add(nparts)
 
@@ -237,7 +237,7 @@ func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte,
 			chunkhashstring := HashToUid(hash)
 			chunk := server.SendReplyWaitAnswer(state, peer, hash)
 			WriteChunkFile(chunk.Data)
-			state.FileManager.AddChunk(metahashstring, chunkhashstring)
+			state.FileManager.AddChunk(metahashstring, chunkhashstring, uint64(i))
 			fmt.Println("DOWNLOADING", out_file, "chunk", i+1, "from", peer)
 			wg.Done()
 		}(i)
@@ -253,11 +253,11 @@ func (server *Gossiper) UploadFile(state *State, path string) {
 
 	metahashstring := GetMetaHash(metafile)
 	WriteMetaFile(metafile)
-	state.FileManager.AddFile(path, metahashstring)
+	state.FileManager.AddFile(path, metahashstring, uint64(len(metafile)/64))
 	for i := 0; i < len(metafile); i += 32 {
 		hash := metafile[i : i+32]
 		chunkhashstring := HashToUid(hash)
-		state.FileManager.AddChunk(metahashstring, chunkhashstring)
+		state.FileManager.AddChunk(metahashstring, chunkhashstring, uint64(i))
 	}
 }
 
