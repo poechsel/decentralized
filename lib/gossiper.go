@@ -5,6 +5,7 @@ import (
 	"github.com/dedis/protobuf"
 	"math/rand"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,6 +47,10 @@ func (gossip *Gossiper) ReceiveLoop(c NetChannel) {
 	for {
 		gossip.Receive(c)
 	}
+}
+
+func (gossip *Gossiper) SendSearchRequest(r *SearchRequest, address *net.UDPAddr) {
+	gossip.SendPacket(&GossipPacket{SearchRequest: r}, address)
 }
 
 func (gossip *Gossiper) SendRumor(rumor *RumorMessage, address *net.UDPAddr) {
@@ -119,9 +124,9 @@ func (server *Gossiper) ClientHandler(state *State, request Packet) {
 
 func (server *Gossiper) ServerHandler(state *State, request Packet) {
 	packet := request.Content
-	source_string := request.Address.String()
-	if source_string != server.Address.String() {
-		go state.AddPeer(source_string)
+	sourceString := request.Address.String()
+	if sourceString != server.Address.String() {
+		go state.AddPeer(sourceString)
 	}
 	if packet.Simple != nil {
 		fmt.Println("SIMPLE MESSAGE", packet.Simple)
@@ -133,27 +138,29 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 				RelayPeerAddr: server.Address.String(),
 				Contents:      packet.Simple.Contents}})
 	} else if packet.Status != nil {
-		fmt.Println("STATUS from", source_string, packet.Status)
+		fmt.Println("STATUS from", sourceString, packet.Status)
 		// a status message can either be dispatched and use as an ack
 		// or in the negative be used directly here
-		if !state.dispatchStatusToPeer(source_string, packet.Status) {
-			server.HandleStatus(state, source_string, packet.Status.Want)
+		if !state.dispatchStatusToPeer(sourceString, packet.Status) {
+			server.HandleStatus(state, sourceString, packet.Status.Want)
 		}
 	} else if packet.Rumor != nil {
 		fmt.Println("RUMOR origin",
 			packet.Rumor.Origin, "from",
-			source_string, "ID",
+			sourceString, "ID",
 			packet.Rumor.ID, "contents",
 			packet.Rumor.Text)
-		server.HandleRumor(state, source_string, packet.Rumor)
+		server.HandleRumor(state, sourceString, packet.Rumor)
 	} else if packet.Private != nil {
-		server.HandlePointToPointMessage(state, source_string, packet.Private)
+		server.HandlePointToPointMessage(state, sourceString, packet.Private)
 	} else if packet.DataReply != nil {
-		go server.HandlePointToPointMessage(state, source_string, packet.DataReply)
+		go server.HandlePointToPointMessage(state, sourceString, packet.DataReply)
 	} else if packet.DataRequest != nil {
-		go server.HandlePointToPointMessage(state, source_string, packet.DataRequest)
+		go server.HandlePointToPointMessage(state, sourceString, packet.DataRequest)
 	} else if packet.SearchRequest != nil {
-		go server.HandleSearchRequest(state, source_string, packet.SearchRequest)
+		go server.HandleSearchRequest(state, sourceString, packet.SearchRequest)
+	} else if packet.SearchReply != nil {
+		go server.HandlePointToPointMessage(state, sourceString, packet.SearchReply)
 	}
 	fmt.Println("PEERS", state)
 }
@@ -161,12 +168,12 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 func (server *Gossiper) RumorMonger(state *State, address string, rumor *RumorMessage) {
 	decision := rand.Int() % 2
 	if decision == 1 {
-		rand_peer, err := state.getRandomPeer(address)
+		randPeer, err := state.getRandomPeer(address)
 		if err != nil {
 			return
 		}
-		fmt.Println("FLIPPED COIN sending rumor to", rand_peer.Address)
-		server.SendRumor(rumor, rand_peer.Address)
+		fmt.Println("FLIPPED COIN sending rumor to", randPeer.Address)
+		server.SendRumor(rumor, randPeer.Address)
 	} else {
 		// stop mongering
 		return
@@ -261,13 +268,42 @@ func (server *Gossiper) UploadFile(state *State, path string) {
 	}
 }
 
-func (server *Gossiper) HandleSearchRequest(state *State, sender_addr_string string, msg *SearchRequest) {
+func (server *Gossiper) HandleSearchRequest(state *State, senderAddrString string, msg *SearchRequest) {
 	if !state.searchRequestCacher.CanTreat(msg) {
 		return
 	}
+	pattern := SearchPatternToRegex(strings.Join(msg.Keywords, ","))
+
+	// get our current search result and send them back to the origin
+	searchResultSelf := state.FileManager.toSearchReply(pattern)
+	searchReply := NewSearchReply(server.Name, msg.Origin, searchResultSelf)
+	go server.HandlePointToPointMessage(state, server.Address.String(), searchReply)
+
+	// remove one from the budget
+	budget := int(msg.Budget) - 1
+
+	// If we still got some budget remaining
+	if budget > 0 {
+		// this will work as we will get back at most len(peers) peers if budget is too big
+		randPeers, err := state.getNRandomPeer(budget, server.Address.String(), senderAddrString)
+
+		if err != nil {
+			baseBudgetPerPeer := budget / len(randPeers)
+			remainderBudget := budget % len(randPeers)
+
+			for i, nextPeer := range randPeers {
+				newBudget := baseBudgetPerPeer
+				if i < remainderBudget {
+					newBudget += 1
+				}
+				nextRequest := NewSearchRequest(msg.Origin, uint64(newBudget), msg.Keywords)
+				go server.SendSearchRequest(nextRequest, nextPeer.Address)
+			}
+		}
+	}
 }
 
-func (server *Gossiper) HandlePointToPointMessage(state *State, sender_addr_string string, msg PointToPoint) {
+func (server *Gossiper) HandlePointToPointMessage(state *State, senderAddrString string, msg PointToPoint) {
 	/* This check is only to make sure that we dispatch private messages
 	sent by our current node */
 	if msg.GetOrigin() == server.Name {
@@ -301,17 +337,17 @@ func (server *Gossiper) HandlePointToPointMessage(state *State, sender_addr_stri
 	}
 }
 
-func (server *Gossiper) HandleRumor(state *State, sender_addr_string string, rumor *RumorMessage) {
+func (server *Gossiper) HandleRumor(state *State, senderAddrString string, rumor *RumorMessage) {
 
-	message_added, isIdGreater := state.addRumorMessage(rumor, sender_addr_string)
+	message_added, isIdGreater := state.addRumorMessage(rumor, senderAddrString)
 
 	if isIdGreater {
-		state.UpdateRoutingTable(rumor.Origin, sender_addr_string)
+		state.UpdateRoutingTable(rumor.Origin, senderAddrString)
 	}
 
 	// send the ack
-	if sender_addr_string != server.Address.String() {
-		sender_addr, _ := AddrOfString(sender_addr_string)
+	if senderAddrString != server.Address.String() {
+		sender_addr, _ := AddrOfString(senderAddrString)
 		self_status := state.db.GetPeerStatus()
 		server.SendStatus(&StatusPacket{Want: self_status}, sender_addr)
 	}
@@ -319,22 +355,22 @@ func (server *Gossiper) HandleRumor(state *State, sender_addr_string string, rum
 	/* If we added a message, we then wait for an ack and
 	rumormonger if needed */
 	if message_added {
-		rand_peer, err := state.getRandomPeer(sender_addr_string)
+		randPeer, err := state.getRandomPeer(senderAddrString)
 		if err != nil {
-			server.RumorMonger(state, sender_addr_string, rumor)
+			server.RumorMonger(state, senderAddrString, rumor)
 		} else {
-			server.SendRumor(rumor, rand_peer.Address)
-			rand_peer.RequestStatus()
+			server.SendRumor(rumor, randPeer.Address)
+			randPeer.RequestStatus()
 			timer := time.NewTicker(time.Second)
 
 			select {
 			case <-timer.C:
-				rand_peer.CancelRequestStatus()
+				randPeer.CancelRequestStatus()
 				timer.Stop()
-				server.RumorMonger(state, sender_addr_string, rumor)
-			case ack := <-rand_peer.Status_channel:
-				if !server.HandleStatus(state, rand_peer.Address.String(), ack.Want) {
-					server.RumorMonger(state, sender_addr_string, rumor)
+				server.RumorMonger(state, senderAddrString, rumor)
+			case ack := <-randPeer.Status_channel:
+				if !server.HandleStatus(state, randPeer.Address.String(), ack.Want) {
+					server.RumorMonger(state, senderAddrString, rumor)
 				}
 			}
 		}
@@ -347,12 +383,12 @@ func (server *Gossiper) AntiEntropy(state *State) {
 		for {
 			select {
 			case <-ticker.C:
-				rand_peer, err := state.getRandomPeer()
+				randPeer, err := state.getRandomPeer()
 				if err == nil {
 					self_status := state.db.GetPeerStatus()
 					server.SendStatus(
 						&StatusPacket{Want: self_status},
-						rand_peer.Address)
+						randPeer.Address)
 				}
 			}
 		}
@@ -374,10 +410,10 @@ func (server *Gossiper) RefreshRouteLoop(state *State) {
 			for {
 				select {
 				case <-ticker.C:
-					rand_peer, err := state.getRandomPeer()
+					randPeer, err := state.getRandomPeer()
 					if err == nil {
 						rm := server.createRouteRefresh(state)
-						server.SendRumor(rm, rand_peer.Address)
+						server.SendRumor(rm, randPeer.Address)
 					}
 				}
 			}

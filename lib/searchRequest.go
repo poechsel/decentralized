@@ -26,12 +26,55 @@ type SearchRequest struct {
 	Keywords []string
 }
 
+func NewSearchRequest(origin string, budget uint64, keywords []string) *SearchRequest {
+	return &SearchRequest{Origin: origin, Budget: budget, Keywords: keywords}
+}
+
 type SearchReply struct {
 	Origin      string
 	Destination string
 	HopLimit    uint32
 	Results     []*SearchResult
 }
+
+func (msg *SearchReply) ToPacket() *GossipPacket {
+	return &GossipPacket{SearchReply: msg}
+}
+
+func (msg *SearchReply) GetOrigin() string {
+	return msg.Origin
+}
+
+func (msg *SearchReply) GetDestination() string {
+	return msg.Destination
+}
+
+func NewSearchReply(origin string, destination string, results []*SearchResult) *SearchReply {
+	o := SearchReply{
+		Origin:      origin,
+		Destination: destination,
+		HopLimit:    10,
+		Results:     results,
+	}
+	return &o
+}
+
+func (msg *SearchReply) NextHop() bool {
+	msg.HopLimit -= 1
+	if msg.HopLimit <= 0 {
+		return false
+	} else {
+		return true
+	}
+}
+
+func (msg *SearchReply) OnFirstEmission(state *State) {
+}
+
+func (msg *SearchReply) OnReception(_ *State, _ func(*GossipPacket)) {
+	//TODO do something
+}
+
 type SearchResult struct {
 	FileName     string
 	MetafileHash []byte
