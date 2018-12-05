@@ -3,6 +3,7 @@ package lib
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"strings"
 	"sync"
@@ -131,16 +132,6 @@ func (state *State) UpdateRoutingTable(peer string, address string) {
 
 /* Get a random peer that is not in the list avoir */
 func (state *State) getRandomPeer(avoid ...string) (*Peer, error) {
-	generated, err := state.getNRandomPeer(1, avoid...)
-	if err == nil && len(generated) > 0 {
-		return generated[0], nil
-	} else {
-		return nil, err
-	}
-}
-
-/* Get N random peers that are not in the list avoid */
-func (state *State) getNRandomPeer(n int, avoid ...string) ([](*Peer), error) {
 	state.lock_peers.RLock()
 	defer state.lock_peers.RUnlock()
 
@@ -156,20 +147,46 @@ func (state *State) getNRandomPeer(n int, avoid ...string) ([](*Peer), error) {
 	}
 
 	if len(peers) == 0 {
-		return [](*Peer){}, errors.New("No peer to select from")
+		return nil, errors.New("No peer to select from")
 	}
+	k := rand.Intn(len(peers))
+	name := peers[k]
+	return state.known_peers[name], nil
+}
 
-	if n > len(peers) {
+/* Get N random peers that are not in the list avoid */
+func (state *State) getNRandomPeer(n int, currentPeerAddress string) ([](*Peer), error) {
+	state.lock_peers.RLock()
+	defer state.lock_peers.RUnlock()
 
+	var peers []string
+	for _, name := range state.list_peers {
+		if name != currentPeerAddress {
+			peers = append(peers, name)
+		}
 	}
 
 	generated := [](*Peer){}
-	for i := 0; i < n; i++ {
-		k := rand.Intn(len(peers))
-		generated = append(generated, state.known_peers[peers[k]])
-		peers = append(peers[:k], peers[k+1:]...)
+	if n >= len(peers) {
+		dbgnames := []string{}
+		for _, p := range peers {
+			generated = append(generated, state.known_peers[p])
+			dbgnames = append(dbgnames, p)
+		}
+		log.Println("random -> ", dbgnames)
+		return generated, nil
+	} else {
+		perm := rand.Perm(len(peers))
+		dbgnames := []string{}
+		for i, k := range perm {
+			if i < n {
+				dbgnames = append(dbgnames, peers[k])
+				generated = append(generated, state.known_peers[peers[k]])
+			}
+		}
+		log.Println("random -> ", dbgnames)
+		return generated, nil
 	}
-	return generated, nil
 }
 
 func (state *State) AddNewPeerCallback(c chan string) {

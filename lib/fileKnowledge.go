@@ -45,7 +45,7 @@ func (k *FileKnowledgeInfo) Insert(chunkId int, peer string) {
 }
 
 func NewFileKnowledgeDB() *FileKnowledgeDB {
-	return &FileKnowledgeDB{db: make(map[string]*FileKnowledgeInfo)}
+	return &FileKnowledgeDB{db: make(map[string]*FileKnowledgeInfo), lock: &sync.Mutex{}}
 }
 
 func (fk *FileKnowledgeDB) Insert(metahash string, chunkId int, peer string) {

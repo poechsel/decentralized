@@ -3,6 +3,7 @@ package lib
 import (
 	"fmt"
 	"github.com/dedis/protobuf"
+	"log"
 	"math/rand"
 	"net"
 	"strings"
@@ -244,10 +245,11 @@ func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte,
 		go func(i int) {
 			hash := metafile[i : i+32]
 			chunkhashstring := HashToUid(hash)
-			peerChunk := state.FileKnowledgeDB.SelectPeerForChunk(peer, metahashstring, i)
+			// here we do a conversion: chunks are counted starting 1
+			peerChunk := state.FileKnowledgeDB.SelectPeerForChunk(peer, metahashstring, i/32+1)
 			chunk := server.SendReplyWaitAnswer(state, peerChunk, hash)
 			WriteChunkFile(chunk.Data)
-			state.FileManager.AddChunk(metahashstring, chunkhashstring, uint64(i))
+			state.FileManager.AddChunk(metahashstring, chunkhashstring, uint64(i/32+1))
 			fmt.Println("DOWNLOADING", out_file, "chunk", i+1, "from", peerChunk)
 			wg.Done()
 		}(i)
@@ -262,12 +264,13 @@ func (server *Gossiper) UploadFile(state *State, path string) {
 	metafile := SplitFile(path)
 
 	metahashstring := GetMetaHash(metafile)
+	log.Println("UPLOADED ", path, metahashstring)
 	WriteMetaFile(metafile)
 	state.FileManager.AddFile(path, metahashstring, uint64(len(metafile)/64))
 	for i := 0; i < len(metafile); i += 32 {
 		hash := metafile[i : i+32]
 		chunkhashstring := HashToUid(hash)
-		state.FileManager.AddChunk(metahashstring, chunkhashstring, uint64(i))
+		state.FileManager.AddChunk(metahashstring, chunkhashstring, uint64(i/32+1))
 	}
 }
 
@@ -275,10 +278,12 @@ func (server *Gossiper) HandleSearchRequest(state *State, senderAddrString strin
 	if !state.searchRequestCacher.CanTreat(msg) {
 		return
 	}
+	log.Println(server.Name, "Success in handling seach request from", msg)
 	pattern := SearchPatternToRegex(strings.Join(msg.Keywords, ","))
 
 	// get our current search result and send them back to the origin
 	searchResultSelf := state.FileManager.toSearchReply(pattern)
+	log.Println(server.Name, strings.Join(msg.Keywords, ","), searchResultSelf)
 	searchReply := NewSearchReply(server.Name, msg.Origin, searchResultSelf)
 	go server.HandlePointToPointMessage(state, server.Address.String(), searchReply)
 
@@ -288,9 +293,9 @@ func (server *Gossiper) HandleSearchRequest(state *State, senderAddrString strin
 	// If we still got some budget remaining
 	if budget > 0 {
 		// this will work as we will get back at most len(peers) peers if budget is too big
-		randPeers, err := state.getNRandomPeer(budget, server.Address.String(), senderAddrString)
+		randPeers, err := state.getNRandomPeer(budget, server.Address.String())
 
-		if err != nil {
+		if err == nil {
 			baseBudgetPerPeer := budget / len(randPeers)
 			remainderBudget := budget % len(randPeers)
 
@@ -300,6 +305,7 @@ func (server *Gossiper) HandleSearchRequest(state *State, senderAddrString strin
 					newBudget += 1
 				}
 				nextRequest := NewSearchRequest(msg.Origin, uint64(newBudget), msg.Keywords)
+				log.Println(server.Name, "sending next to", *nextPeer)
 				go server.SendSearchRequest(nextRequest, nextPeer.Address)
 			}
 		}
@@ -308,8 +314,16 @@ func (server *Gossiper) HandleSearchRequest(state *State, senderAddrString strin
 
 func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int) {
 	receiveFileChan := make(chan (*SearchResultFrom), 256)
+	kstr := strings.Join(keywords, ",")
 
 	currentBudget := budget
+	if currentBudget < 2 {
+		currentBudget = 2
+	}
+
+	fmt.Println("SEARCHING for keywords", strings.Join(keywords, ","), "with budget", budget)
+	log.Println("SEARCHING for keywords", strings.Join(keywords, ","), "with budget", budget)
+
 	ticker := time.NewTicker(time.Second)
 	nResults := 0
 	results := make(map[SearchAnswer]bool)
@@ -317,15 +331,18 @@ func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int
 	uidSearch := state.searchRequestCacher.OpenSearch(keywords, receiveFileChan)
 	searchMerger := NewSearchMerger()
 
-	for currentBudget < 32 && nResults < 2 {
+	for currentBudget <= 32 && nResults < 2 {
 		select {
 		case <-ticker.C:
 			searchRequest := NewSearchRequest(server.Name, uint64(currentBudget), keywords)
+			log.Println("new search request", kstr, currentBudget)
 			go server.HandleSearchRequest(state, server.Address.String(), searchRequest)
 			currentBudget *= 2
 
 		case result := <-receiveFileChan:
-			fmt.Println(result.Result)
+			fmt.Println(result.String())
+			log.Println("MATCH", result.From, result.Result.FileName)
+			log.Println(result.String())
 			for _, chunkId := range result.Result.ChunkMap {
 				state.FileKnowledgeDB.Insert(HashToUid(result.Result.MetafileHash), int(chunkId), result.From)
 			}

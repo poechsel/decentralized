@@ -2,17 +2,18 @@ package lib
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 func SearchPatternToRegex(pattern string) *regexp.Regexp {
-	pattern = strings.Replace(pattern, ".", "\\.", -1)
-	pattern = strings.Replace(pattern, "*", ".*", -1)
+	//pattern = strings.Replace(pattern, ".", "\\.", -1)
+	//pattern = strings.Replace(pattern, "*", ".*", -1)
 	pattern = strings.Replace(pattern, "|", "\\|", -1)
 	pattern = strings.Replace(pattern, ",", "|", -1)
-	pattern = "^(" + pattern + ")$"
+	pattern = "(" + pattern + ")"
 	return regexp.MustCompile(pattern)
 }
 
@@ -173,7 +174,7 @@ type SearchResultFrom struct {
 func (sr *SearchResultFrom) String() string {
 	chunks_str := []string{}
 	for _, c := range sr.Result.ChunkMap {
-		chunks_str = append(chunks_str, string(c))
+		chunks_str = append(chunks_str, strconv.FormatUint(c, 10))
 	}
 	chunks := strings.Join(chunks_str, ",")
 	return "FOUND match " + sr.Result.FileName + " at " + sr.From + " metafile=" + HashToUid(sr.Result.MetafileHash) + " chunks=" + chunks
