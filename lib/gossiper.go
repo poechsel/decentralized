@@ -304,22 +304,36 @@ func (server *Gossiper) HandleSearchRequest(state *State, senderAddrString strin
 }
 
 func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int) {
-	receiveFileChan := make(chan (SearchResult), 256)
+	receiveFileChan := make(chan (*SearchResultFrom), 256)
 
 	currentBudget := budget
-	ticker := time.Tick(time.Second)
-	results := []SearchResult{}
-	for currentBudget < 32 && len(results) < 2 {
+	ticker := time.NewTicker(time.Second)
+	nResults := 0
+	results := make(map[searchMergerKey]*SearchAnswer)
+
+	uidSearch := state.searchRequestCacher.OpenSearch(keywords, receiveFileChan)
+	searchMerger := NewSearchMerger()
+
+	for currentBudget < 32 && nResults < 2 {
 		select {
 		case <-ticker.C:
-			searchRequest := NewSearchRequest(server.Name, currentBudget, keywords)
-			go server.HandleSearchRequest(state, senderAddrString, msg)
+			searchRequest := NewSearchRequest(server.Name, uint64(currentBudget), keywords)
+			go server.HandleSearchRequest(state, server.Address.String(), searchRequest)
 			currentBudget *= 2
 
-		case result, err := <-receiveFileChan:
-			results = append(results, result)
+		case result := <-receiveFileChan:
+			fmt.Println(result.Result)
+			answer, _ := searchMerger.mergeResult(result.From, result.Result)
+			if answer != nil {
+				/* We overwrite the previous answer if it exits.
+				In that case, we know that we have several matches on this file */
+				results[answer.ToKey()] = answer
+				nResults += 1
+			}
 		}
 	}
+	state.searchRequestCacher.CloseSearch(uidSearch)
+	fmt.Println("SEARCH FINISHED")
 }
 
 func (server *Gossiper) HandlePointToPointMessage(state *State, senderAddrString string, msg PointToPoint) {

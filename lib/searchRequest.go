@@ -71,8 +71,8 @@ func (msg *SearchReply) NextHop() bool {
 func (msg *SearchReply) OnFirstEmission(state *State) {
 }
 
-func (msg *SearchReply) OnReception(_ *State, _ func(*GossipPacket)) {
-	//TODO do something
+func (msg *SearchReply) OnReception(state *State, _ func(*GossipPacket)) {
+	state.searchRequestCacher.DispatchSearchReply(msg)
 }
 
 type SearchResult struct {
@@ -87,83 +87,16 @@ type searchEntry struct {
 	origin  string
 }
 
-type resultEntry struct {
-	chunkCount   uint64
-	MetafileHash []byte
-	ChunkMap     map[uint64]int
-}
-
-func (r *resultEntry) numberComplete() int {
-	if len(r.ChunkMap) < int(r.chunkCount) {
-		return 0
-	}
-
-	var minNumber int
-	for _, minNumber = range r.ChunkMap {
-		break
-	}
-
-	for _, n := range r.ChunkMap {
-		if n < minNumber {
-			minNumber = n
-		}
-	}
-	return minNumber
-}
-
-func newResultEntry(metafile []byte, count uint64) *resultEntry {
-	return &resultEntry{
-		chunkCount:   count,
-		MetafileHash: metafile,
-		ChunkMap:     make(map[uint64]int),
-	}
-}
-
-type searchResultEntry struct {
-	time       time.Time
-	pattern_re *regexp.Regexp
-	results    map[resultEntryKey](*resultEntry)
-}
-
-func (r *searchResultEntry) numberComplete() int {
-	var o int = 0
-	for _, r := range r.results {
-		o += r.numberComplete()
-	}
-	return o
+type OpenedSearch struct {
+	pattern             *regexp.Regexp
+	transmissionChannel chan (*SearchResultFrom)
 }
 
 type SearchRequestCacher struct {
-	lock  *sync.Mutex
-	cache map[searchEntry](*searchResultEntry)
-}
-
-func newSearchResultEntry(time time.Time, pattern string) *searchResultEntry {
-	return &searchResultEntry{
-		time:       time,
-		results:    make(map[resultEntryKey](*resultEntry)),
-		pattern_re: SearchPatternToRegex(pattern),
-	}
-}
-
-func (rc *SearchRequestCacher) AppendSearchResult(result *SearchResult) {
-	rc.lock.Lock()
-	defer rc.lock.Unlock()
-
-	key := resultEntryKey{name: result.FileName, metahash: HashToUid((result.MetafileHash))}
-
-	for _, entry := range rc.cache {
-		if FilenameMatchPattern(entry.pattern_re, result.FileName) {
-			if _, ok := entry.results[key]; !ok {
-				entry.results[key] = newResultEntry(result.MetafileHash, result.ChunkCount)
-			}
-			entry_file := entry.results[key]
-			for _, chunk := range result.ChunkMap {
-				// when looking on a non present entry it returns 0 by default
-				entry_file.ChunkMap[chunk] = entry_file.ChunkMap[chunk] + 1
-			}
-		}
-	}
+	lock          *sync.Mutex
+	cache         map[searchEntry]time.Time
+	openedSearch  map[int]OpenedSearch
+	uidOpenSearch int
 }
 
 func (rc *SearchRequestCacher) CanTreat(request *SearchRequest) bool {
@@ -176,20 +109,72 @@ func (rc *SearchRequestCacher) CanTreat(request *SearchRequest) bool {
 		origin:  request.Origin,
 	}
 
-	if content, ok := rc.cache[entry]; ok {
-		if now.Sub(content.time).Seconds() < 0.5 {
+	if time, ok := rc.cache[entry]; ok {
+		if now.Sub(time).Seconds() < 0.5 {
 			return false
 		}
 	} else {
-		rc.cache[entry] = newSearchResultEntry(now, entry.pattern)
+		rc.cache[entry] = now
 	}
-	rc.cache[entry].time = now
 	return true
+}
+
+/* Returns the uid of the search */
+func (rc *SearchRequestCacher) OpenSearch(keywords []string, outChan chan (*SearchResultFrom)) int {
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+
+	uid := rc.uidOpenSearch
+
+	rc.openedSearch[uid] = OpenedSearch{
+		pattern:             SearchPatternToRegex(strings.Join(keywords, ",")),
+		transmissionChannel: outChan,
+	}
+
+	rc.uidOpenSearch += 1
+
+	return uid
+}
+
+func (rc *SearchRequestCacher) CloseSearch(uid int) {
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	if _, ok := rc.openedSearch[uid]; ok {
+		delete(rc.openedSearch, uid)
+	}
+}
+
+func (rc *SearchRequestCacher) DispatchSearchReply(r *SearchReply) {
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	for _, search := range rc.openedSearch {
+		for _, result := range r.Results {
+			if search.pattern.MatchString(result.FileName) {
+				search.transmissionChannel <- &SearchResultFrom{From: r.GetOrigin(), Result: result}
+			}
+		}
+	}
 }
 
 func NewSearchRequestCacher() *SearchRequestCacher {
 	return &SearchRequestCacher{
-		lock:  &sync.Mutex{},
-		cache: make(map[searchEntry](*searchResultEntry)),
+		lock:          &sync.Mutex{},
+		cache:         make(map[searchEntry]time.Time),
+		uidOpenSearch: 0,
+		openedSearch:  make(map[int]OpenedSearch),
 	}
+}
+
+type SearchResultFrom struct {
+	From   string
+	Result *SearchResult
+}
+
+func (sr *SearchResultFrom) String() string {
+	chunks_str := []string{}
+	for _, c := range sr.Result.ChunkMap {
+		chunks_str = append(chunks_str, string(c))
+	}
+	chunks := strings.Join(chunks_str, ",")
+	return "FOUND match " + sr.Result.FileName + " at " + sr.From + " metafile=" + HashToUid(sr.Result.MetafileHash) + " chunks=" + chunks
 }
