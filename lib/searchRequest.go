@@ -119,11 +119,6 @@ func newResultEntry(metafile []byte, count uint64) *resultEntry {
 	}
 }
 
-type resultEntryKey struct {
-	name     string
-	metahash string
-}
-
 type searchResultEntry struct {
 	time       time.Time
 	pattern_re *regexp.Regexp

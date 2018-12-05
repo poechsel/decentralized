@@ -303,6 +303,25 @@ func (server *Gossiper) HandleSearchRequest(state *State, senderAddrString strin
 	}
 }
 
+func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int) {
+	receiveFileChan := make(chan (SearchResult), 256)
+
+	currentBudget := budget
+	ticker := time.Tick(time.Second)
+	results := []SearchResult{}
+	for currentBudget < 32 && len(results) < 2 {
+		select {
+		case <-ticker.C:
+			searchRequest := NewSearchRequest(server.Name, currentBudget, keywords)
+			go server.HandleSearchRequest(state, senderAddrString, msg)
+			currentBudget *= 2
+
+		case result, err := <-receiveFileChan:
+			results = append(results, result)
+		}
+	}
+}
+
 func (server *Gossiper) HandlePointToPointMessage(state *State, senderAddrString string, msg PointToPoint) {
 	/* This check is only to make sure that we dispatch private messages
 	sent by our current node */
