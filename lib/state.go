@@ -45,6 +45,7 @@ type State struct {
 
 	FileManager         *FileManager
 	searchRequestCacher *SearchRequestCacher
+	FileKnowledgeDB     *FileKnowledgeDB
 }
 
 func (state *State) DispatchDataAck(peer string, hash string, ack DataReply) bool {
@@ -109,6 +110,7 @@ func NewState() *State {
 		dataAck:             make(map[DataAckKey]Stack),
 		FileManager:         NewFileManager(),
 		searchRequestCacher: NewSearchRequestCacher(),
+		FileKnowledgeDB:     NewFileKnowledgeDB(),
 	}
 	return state
 }

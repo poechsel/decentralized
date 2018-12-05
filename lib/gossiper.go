@@ -118,7 +118,7 @@ func (server *Gossiper) ClientHandler(state *State, request Packet) {
 			packet.DataReply.HashValue,
 			packet.DataReply.Origin)
 	} else if packet.SearchRequest != nil {
-		go server.HandleSearchRequest(state, server.Address.String(), packet.SearchRequest)
+		go server.LaunchSearch(state, packet.SearchRequest.Keywords, int(packet.SearchRequest.Budget))
 	}
 }
 
@@ -226,11 +226,13 @@ func (server *Gossiper) SendReplyWaitAnswer(state *State, peer string, hash []by
 	}
 }
 
-//out_file is relative to the download folder
+// out_file is relative to the download folder
+// If peer is "" we will use our fileKnowledgeDb to select a good peer
 func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte, out_file string) {
-	metafilereply := server.SendReplyWaitAnswer(state, peer, metahash)
+	peerMetaHash := state.FileKnowledgeDB.SelectPeerForMetaHash(peer, HashToUid(metahash))
+	metafilereply := server.SendReplyWaitAnswer(state, peerMetaHash, metahash)
 	metafile := metafilereply.Data
-	fmt.Println("DOWNLOADING metafile of", out_file, "from", peer)
+	fmt.Println("DOWNLOADING metafile of", out_file, "from", peerMetaHash)
 	go WriteMetaFile(metafile)
 	metahashstring := GetMetaHash(metafile)
 	nparts := len(metafile) / 32
@@ -242,10 +244,11 @@ func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte,
 		go func(i int) {
 			hash := metafile[i : i+32]
 			chunkhashstring := HashToUid(hash)
-			chunk := server.SendReplyWaitAnswer(state, peer, hash)
+			peerChunk := state.FileKnowledgeDB.SelectPeerForChunk(peer, metahashstring, i)
+			chunk := server.SendReplyWaitAnswer(state, peerChunk, hash)
 			WriteChunkFile(chunk.Data)
 			state.FileManager.AddChunk(metahashstring, chunkhashstring, uint64(i))
-			fmt.Println("DOWNLOADING", out_file, "chunk", i+1, "from", peer)
+			fmt.Println("DOWNLOADING", out_file, "chunk", i+1, "from", peerChunk)
 			wg.Done()
 		}(i)
 	}
@@ -309,7 +312,7 @@ func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int
 	currentBudget := budget
 	ticker := time.NewTicker(time.Second)
 	nResults := 0
-	results := make(map[searchMergerKey]*SearchAnswer)
+	results := make(map[SearchAnswer]bool)
 
 	uidSearch := state.searchRequestCacher.OpenSearch(keywords, receiveFileChan)
 	searchMerger := NewSearchMerger()
@@ -323,11 +326,14 @@ func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int
 
 		case result := <-receiveFileChan:
 			fmt.Println(result.Result)
-			answer, _ := searchMerger.mergeResult(result.From, result.Result)
-			if answer != nil {
+			for _, chunkId := range result.Result.ChunkMap {
+				state.FileKnowledgeDB.Insert(HashToUid(result.Result.MetafileHash), int(chunkId), result.From)
+			}
+			if searchMerger.mergeResult(result.From, result.Result) {
 				/* We overwrite the previous answer if it exits.
 				In that case, we know that we have several matches on this file */
-				results[answer.ToKey()] = answer
+				key := SearchAnswer{FileName: result.Result.FileName, MetaHash: HashToUid(result.Result.MetafileHash)}
+				results[key] = true
 				nResults += 1
 			}
 		}

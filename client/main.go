@@ -5,6 +5,7 @@ import (
 	"github.com/dedis/protobuf"
 	"github.com/poechsel/Peerster/lib"
 	"net"
+	"strings"
 )
 
 func main() {
@@ -13,6 +14,8 @@ func main() {
 	var file = flag.String("file", "", "file to be indexed by the gossiper, or filename of the requested file")
 	var msg = flag.String("msg", "", "message to be sent")
 	var request = flag.String("request", "", "request a chunk or metafile of this hash")
+	var budget = flag.Int("budget", 2, "Budget for the file search")
+	var keywords = flag.String("keywords", "", "Keywords to filter file with")
 	flag.Parse()
 
 	address := "127.0.0.1:" + *port
@@ -39,6 +42,15 @@ func main() {
 			lib.ExitIfError(err)
 			udpConn.Write(packetBytes)
 		}
+	} else if *keywords != "" {
+		p := lib.NewSearchRequest("", uint64(*budget), strings.Split(*keywords, ","))
+		gossip_packet :=
+			&lib.GossipPacket{
+				SearchRequest: p}
+
+		packetBytes, err := protobuf.Encode(gossip_packet)
+		lib.ExitIfError(err)
+		udpConn.Write(packetBytes)
 	} else if *msg != "" {
 		if *dest != "" {
 			p := lib.NewPrivateMessage("client", *msg, *dest)

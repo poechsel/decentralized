@@ -20,18 +20,13 @@ type SearchMerger struct {
 type SearchAnswer struct {
 	FileName string
 	MetaHash string
-	Chunks   map[uint64]([]string)
-}
-
-func (s *SearchAnswer) ToKey() searchMergerKey {
-	return searchMergerKey{name: s.FileName, metaHash: s.MetaHash}
 }
 
 func NewSearchMerger() *SearchMerger {
 	return &SearchMerger{content: make(map[searchMergerKey]*searchMergerEntry)}
 }
 
-func (sm *SearchMerger) mergeResult(from string, result *SearchResult) (*SearchAnswer, int) {
+func (sm *SearchMerger) mergeResult(from string, result *SearchResult) bool {
 	key := searchMergerKey{name: result.FileName, metaHash: HashToUid(result.MetafileHash)}
 	if _, err := sm.content[key]; !err {
 		sm.content[key] = &searchMergerEntry{
@@ -63,21 +58,9 @@ func (sm *SearchMerger) mergeResult(from string, result *SearchResult) (*SearchA
 
 		if minOcc > sm.content[key].previousNumberDuplicates {
 			sm.content[key].previousNumberDuplicates = minOcc
-			chunks := make(map[uint64]([]string))
-			for chunkId, entry := range sm.content[key].chunks {
-				chunks[chunkId] = []string{}
-				for e, _ := range entry {
-					chunks[chunkId] = append(chunks[chunkId], e)
-				}
-			}
-			return &SearchAnswer{
-					FileName: key.name,
-					MetaHash: key.metaHash,
-					Chunks:   chunks,
-				},
-				minOcc
+			return true
 		}
 	}
 
-	return nil, 0
+	return false
 }

@@ -1,5 +1,7 @@
 package lib
 
+/* Manage file stored on the current node */
+
 import (
 	"regexp"
 	"sync"
