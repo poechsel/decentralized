@@ -112,6 +112,8 @@ type GossipPacket struct {
 	DataReply     *DataReply
 	SearchRequest *SearchRequest
 	SearchReply   *SearchReply
+	TxPublish     *TxPublish
+	BlockPublish  *BlockPublish
 }
 
 func NewDataRequest(origin string, destination string, hash []byte) *DataRequest {

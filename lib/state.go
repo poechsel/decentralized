@@ -44,9 +44,10 @@ type State struct {
 	lockDataAck *sync.Mutex
 	dataAck     map[DataAckKey]Stack
 
-	FileManager         *FileManager
-	searchRequestCacher *SearchRequestCacher
-	FileKnowledgeDB     *FileKnowledgeDB
+	FileManager              *FileManager
+	searchRequestCacher      *SearchRequestCacher
+	FileKnowledgeDB          *FileKnowledgeDB
+	BroadcastWithLimitCacher *BroadcastWithLimitCacher
 }
 
 func (state *State) DispatchDataAck(peer string, hash string, ack DataReply) bool {
@@ -102,16 +103,17 @@ func (state *State) GetRoutingTableNames() []string {
 func NewState() *State {
 	db := NewDatabase()
 	state := &State{
-		known_peers:         make(map[string]*Peer),
-		db:                  &db,
-		lock_peers:          &sync.Mutex{},
-		lock_routing:        &sync.Mutex{},
-		routing:             make(map[string]string),
-		lockDataAck:         &sync.Mutex{},
-		dataAck:             make(map[DataAckKey]Stack),
-		FileManager:         NewFileManager(),
-		searchRequestCacher: NewSearchRequestCacher(),
-		FileKnowledgeDB:     NewFileKnowledgeDB(),
+		known_peers:              make(map[string]*Peer),
+		db:                       &db,
+		lock_peers:               &sync.Mutex{},
+		lock_routing:             &sync.Mutex{},
+		routing:                  make(map[string]string),
+		lockDataAck:              &sync.Mutex{},
+		dataAck:                  make(map[DataAckKey]Stack),
+		FileManager:              NewFileManager(),
+		searchRequestCacher:      NewSearchRequestCacher(),
+		FileKnowledgeDB:          NewFileKnowledgeDB(),
+		BroadcastWithLimitCacher: NewBroadcastWithLimitCacher(),
 	}
 	return state
 }

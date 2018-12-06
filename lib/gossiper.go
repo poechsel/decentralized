@@ -161,6 +161,10 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 		go server.HandleSearchRequest(state, sourceString, packet.SearchRequest)
 	} else if packet.SearchReply != nil {
 		go server.HandlePointToPointMessage(state, sourceString, packet.SearchReply)
+	} else if packet.TxPublish != nil {
+		go server.HandleBroadcastWithLimit(state, sourceString, packet.TxPublish)
+	} else if packet.BlockPublish != nil {
+		go server.HandleBroadcastWithLimit(state, sourceString, packet.BlockPublish)
 	}
 	fmt.Println("PEERS", state)
 }
@@ -354,6 +358,19 @@ func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int
 	}
 	state.searchRequestCacher.CloseSearch(uidSearch)
 	fmt.Println("SEARCH FINISHED")
+}
+
+func (server *Gossiper) HandleBroadcastWithLimit(state *State, senderAddrString string, msg BroadcastWithLimit) {
+	if state.BroadcastWithLimitCacher.CanTreat(msg) && msg.IsValid(state) {
+		msg.Received(state)
+		next, ok := msg.NextHop()
+		if ok {
+			server.Broadcast(
+				senderAddrString,
+				state,
+				next.ToPacket())
+		}
+	}
 }
 
 func (server *Gossiper) HandlePointToPointMessage(state *State, senderAddrString string, msg PointToPoint) {
