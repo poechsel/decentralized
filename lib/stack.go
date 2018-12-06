@@ -6,13 +6,13 @@ import (
 
 type Stack struct {
 	items []interface{}
-	lock  sync.Mutex
+	lock  *sync.Mutex
 }
 
 func NewStack() *Stack {
 	o := Stack{
 		items: make([]interface{}, 0),
-		lock:  sync.Mutex{},
+		lock:  &sync.Mutex{},
 	}
 	return &o
 }

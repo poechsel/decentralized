@@ -30,8 +30,8 @@ func (sm *SearchMerger) mergeResult(from string, result *SearchResult) bool {
 	key := searchMergerKey{name: result.FileName, metaHash: HashToUid(result.MetafileHash)}
 	if _, err := sm.content[key]; !err {
 		sm.content[key] = &searchMergerEntry{
-			count:                    result.ChunkCount,
-			chunks:                   make(map[uint64](map[string]bool)),
+			count:  result.ChunkCount,
+			chunks: make(map[uint64](map[string]bool)),
 			previousNumberDuplicates: 0,
 		}
 	}

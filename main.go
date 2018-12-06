@@ -45,6 +45,7 @@ func main() {
 		web := lib.NewWebServer(state, gossiper, client_url)
 		state.AddNewMessageCallback(web.AddMessageChannel)
 		state.AddNewPrivateMessageCallback(web.AddPrivateMessageChannel)
+		state.AddNewSearchResultCallback(web.AddSearchResultChannel)
 		state.AddNewPeerCallback(web.AddPeerChannel)
 		go web.Start()
 	} else {

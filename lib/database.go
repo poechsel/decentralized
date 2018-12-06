@@ -27,17 +27,17 @@ func (entry *Entry) Insert(text string, id uint32) {
 }
 
 type Database struct {
-	lock    *sync.RWMutex
+	lock    *sync.Mutex
 	entries map[string](*Entry)
 }
 
 func NewDatabase() Database {
-	return Database{lock: &sync.RWMutex{}, entries: make(map[string](*Entry))}
+	return Database{lock: &sync.Mutex{}, entries: make(map[string](*Entry))}
 }
 
 func (db *Database) PossessRumorMessage(msg *RumorMessage) bool {
-	db.lock.RLock()
-	defer db.lock.RUnlock()
+	db.lock.Lock()
+	defer db.lock.Unlock()
 
 	if entry, ok := db.entries[msg.Origin]; ok {
 		_, ok := entry.messages[msg.ID]
@@ -60,8 +60,8 @@ func (db *Database) InsertRumorMessage(msg *RumorMessage) {
 }
 
 func (db *Database) GetMessageContent(name string, id uint32) string {
-	db.lock.RLock()
-	defer db.lock.RUnlock()
+	db.lock.Lock()
+	defer db.lock.Unlock()
 
 	return db.entries[name].messages[id]
 }
@@ -82,8 +82,8 @@ func (db *Database) GetMinNotPresent(name string) uint32 {
 }
 
 func (db *Database) GetPeerStatus() []PeerStatus {
-	db.lock.RLock()
-	defer db.lock.RUnlock()
+	db.lock.Lock()
+	defer db.lock.Unlock()
 
 	var status []PeerStatus
 

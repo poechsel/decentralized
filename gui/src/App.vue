@@ -19,7 +19,88 @@
         -->
     
     <div class="tile is-ancestor">
-      <div class="tile is-vertical is-9 is-parent">
+      
+      
+      
+      
+      <div class="tile is-vertical is-parent">
+        
+        <div class="tile is-child card"  style="flex-grow: 0">
+          <header class="card-header">
+            <p class="card-header-title">
+              File
+            </p>
+          </header>
+          <div class="card-content">
+            <b-field class="file">
+              <b-upload v-on:input="upload_file" style="width: 100%">
+                <a class="button is-fullwidth">
+                  <b-icon icon="upload"></b-icon> <span>Upload</span>
+                </a>
+              </b-upload>
+            </b-field>
+            <div class="field">
+              <a class="button is-fullwidth" @click="isComponentModalActive = true">
+                <b-icon icon="download"></b-icon> <span>Download</span>
+              </a>
+            </div>
+            <b-modal :active.sync="isComponentModalActive" has-modal-card>
+              <file-download :peers="routing_table"></file-download>
+            </b-modal>
+            
+          </div>
+        </div>
+        
+        <div class="tile is-child card"  style="flex-grow: 0">
+          <header class="card-header">
+            <p class="card-header-title">
+              File Search
+            </p>
+          </header>
+          <div class="card-content">
+            <div style="overflow:scroll; margin-bottom: 20px; height: 250px">
+              <ul >
+                <li style=" border-bottom: 1px solid #EEEEEE"
+                    v-for="(search, index) in searches" :key="index">
+                  <div class="level" style="margin: 0">
+                    <div class="level-left">
+                      {{search.Keywords}}
+                    </div>
+                    <div class="level-right has-text-weight-bold">
+                      {{search.FileName}}
+                    </div>
+                  </div>
+                  <a @click="() => downloadFromSearch(search.MetaHash)">
+                    <span class="icon is-small mdi mdi-download"></span> <span>{{search.MetaHash}}</span>
+                  </a>
+                  
+                </li>
+              </ul>
+
+            <b-modal :active.sync="searchDownloadModal" has-modal-card>
+              <file-download-search :hashvalue="selected_metahash_search"></file-download-search>
+            </b-modal>
+            </div>
+            
+            <div class="field has-addons">
+              <div class="control" style="width: 100%">
+                <input class="input" type="text" placeholder="foo,bar"
+                       v-model="search_keywords">
+              </div>
+              <div class="control">
+                <a class="button is-primary" v-on:click="new_search">
+                  Search
+                </a>
+              </div>
+            </div>
+
+          </div>
+        </div>
+        
+      </div>
+
+
+      <div class="tile is-vertical is-7 is-parent">
         
         <div class="tile is-child card" >
           <header class="card-header">
@@ -86,7 +167,7 @@
           </div>
         </div>
         
-        <div class="card is-child tile">
+        <div class="card is-child tile" style="flex-grow: 0">
           <header class="card-header">
             <p class="card-header-title">
               Peers
@@ -110,31 +191,6 @@
           </div>
         </div>
         
-        <div class="tile is-child card"  style="flex-grow: 0">
-          <header class="card-header">
-            <p class="card-header-title">
-              File
-            </p>
-          </header>
-          <div class="card-content">
-            <b-field class="file">
-              <b-upload v-on:input="upload_file" style="width: 100%">
-                <a class="button is-fullwidth">
-                <b-icon icon="upload"></b-icon> <span>Upload</span>
-                </a>
-              </b-upload>
-            </b-field>
-            <div class="field">
-              <a class="button is-fullwidth" @click="isComponentModalActive = true">
-                <b-icon icon="download"></b-icon> <span>Download</span>
-                </a>
-            </div>
-            <b-modal :active.sync="isComponentModalActive" has-modal-card>
-              <file-download :peers="routing_table"></file-download>
-            </b-modal>
-
-          </div>
-        </div>
         
       </div>
     </div>
@@ -145,6 +201,7 @@
 <script>
 import Messages from './components/Messages.vue'
 import FileDownload from './components/FileDownload.vue'
+import FileDownloadSearch from './components/FileDownloadSearch.vue'
 
 var request = require('request')
 //var x = {'Origin': "foo", 'ID': "4", 'Text': "I am a text"}
@@ -155,7 +212,8 @@ export default {
     name: 'app',
     components: {
         Messages,
-        FileDownload
+        FileDownload,
+        FileDownloadSearch
     },
     data () {
         return {
@@ -170,6 +228,10 @@ export default {
             opened_private_channels: [],
             private_channels: {},
             opened_channel: 0,
+            search_keywords: 0,
+            selected_metahash_search: "",
+            searches: [
+            ],
         }
     },
     methods: {
@@ -207,6 +269,14 @@ export default {
                 let r = JSON.parse(body) 
                 for (var p of r) {
                     this.messages.push(p.Rumor)
+                }
+            })
+        },
+        get_search_results: function() {
+            request('http://127.0.0.1:8080/searchresults', (error, response, body) => {
+                let r = JSON.parse(body) 
+                for (var p of r) {
+                    this.searches.push(p)
                 }
             })
         },
@@ -250,13 +320,30 @@ export default {
                 this.routing_table.sort()
             })
         },
-
+        
+        downloadFromSearch: function(metahash) {
+            this.searchDownloadModal = true
+            this.selected_metahash_search = metahash
+        },
+        
         add_peer: function(event) {
             if (this.new_peer_address != "") {
                 request.post({
                     headers: {'content-type' : 'application/json'},
                     url:     'http://127.0.0.1:8080/node',
                     body:    JSON.stringify(this.new_peer_address)
+                }, function(error, response, body){
+                });
+                this.new_peer_address = ""
+            }
+        },
+
+        new_search: function(event) {
+            if (this.search_keywords != "") {
+                request.post({
+                    headers: {'content-type' : 'application/json'},
+                    url:     'http://127.0.0.1:8080/search',
+                    body:    JSON.stringify(this.search_keywords)
                 }, function(error, response, body){
                 });
                 this.new_peer_address = ""
@@ -286,6 +373,7 @@ export default {
             this.get_new_messages()
             this.get_new_private_messages()
             this.get_routing_table()
+            this.get_search_results()
             this.time_last_update = new Date(Date.now())
         }
     },

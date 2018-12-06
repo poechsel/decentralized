@@ -14,7 +14,7 @@ func main() {
 	var file = flag.String("file", "", "file to be indexed by the gossiper, or filename of the requested file")
 	var msg = flag.String("msg", "", "message to be sent")
 	var request = flag.String("request", "", "request a chunk or metafile of this hash")
-	var budget = flag.Int("budget", 2, "Budget for the file search")
+	var budget = flag.Int("budget", 0, "Budget for the file search")
 	var keywords = flag.String("keywords", "", "Keywords to filter file with")
 	flag.Parse()
 

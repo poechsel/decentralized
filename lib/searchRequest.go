@@ -60,15 +60,6 @@ func NewSearchReply(origin string, destination string, results []*SearchResult) 
 	return &o
 }
 
-func (msg *SearchReply) NextHop() bool {
-	msg.HopLimit -= 1
-	if msg.HopLimit <= 0 {
-		return false
-	} else {
-		return true
-	}
-}
-
 func (msg *SearchReply) OnFirstEmission(state *State) {
 }
 

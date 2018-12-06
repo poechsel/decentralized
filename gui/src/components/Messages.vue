@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div style="overflow:hidden; margin-bottom: 20px; height: 500px">
+    <div style="overflow:scroll; margin-bottom: 20px; height: 500px">
       <ul >
         <li style="padding: 10px 40px 10px 40px; border-bottom: 1px solid #EEEEEE"
             v-for="(message, index) in messages" :key="index">

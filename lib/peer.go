@@ -1,7 +1,6 @@
 package lib
 
 import (
-	//"log"
 	"net"
 	"sync"
 )
@@ -20,7 +19,9 @@ type Peer struct {
 
 func NewPeer(address string) (*Peer, error) {
 	a, err := AddrOfString(address)
-	return &Peer{Address: a, lock: &sync.Mutex{},
+	return &Peer{
+		Address:        a,
+		lock:           &sync.Mutex{},
 		status_awaited: 0,
 		Status_channel: make(chan *StatusPacket)}, err
 }

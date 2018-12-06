@@ -58,14 +58,6 @@ func (msg PrivateMessage) String() string {
 	return "origin " + msg.Origin + " hop-limit " + fmt.Sprint(msg.HopLimit) + " contents " + msg.Text
 }
 
-/*
-func (msg PrivateMessage) NextHop() (PrivateMessage, bool) {
-	m := NewPrivateMessage(msg.Origin, msg.Text, msg.Destination)
-	m.HopLimit = msg.HopLimit - 1
-	return m, m.HopLimit > 0
-}
-*/
-
 func (msg *PrivateMessage) ToPacket() *GossipPacket {
 	return &GossipPacket{Private: msg}
 }
@@ -76,15 +68,6 @@ func (msg *PrivateMessage) GetOrigin() string {
 
 func (msg *PrivateMessage) GetDestination() string {
 	return msg.Destination
-}
-
-func (msg *PrivateMessage) NextHop() bool {
-	msg.HopLimit -= 1
-	if msg.HopLimit <= 0 {
-		return false
-	} else {
-		return true
-	}
 }
 
 func (msg *PrivateMessage) OnFirstEmission(state *State) {
@@ -99,10 +82,11 @@ func (msg *PrivateMessage) OnReception(state *State, sendReply func(*GossipPacke
 type PointToPoint interface {
 	GetOrigin() string
 	GetDestination() string
-	NextHop() bool
+	/*NextHop() bool*/
 	ToPacket() *GossipPacket
 	OnFirstEmission(*State)
 	OnReception(*State, func(*GossipPacket))
+	NextHop() (PointToPoint, bool)
 }
 
 type DataRequest struct {
@@ -152,12 +136,56 @@ func (msg *DataRequest) GetDestination() string {
 	return msg.Destination
 }
 
-func (msg *DataRequest) NextHop() bool {
-	msg.HopLimit -= 1
-	if msg.HopLimit <= 0 {
-		return false
+func (msg *DataRequest) NextHop() (PointToPoint, bool) {
+	if msg.HopLimit <= 1 {
+		return msg, false
 	} else {
-		return true
+		return &DataRequest{
+			Origin:      msg.Origin,
+			Destination: msg.Destination,
+			HopLimit:    msg.HopLimit - 1,
+			HashValue:   msg.HashValue,
+		}, true
+	}
+}
+
+func (msg *PrivateMessage) NextHop() (PointToPoint, bool) {
+	if msg.HopLimit <= 1 {
+		return msg, false
+	} else {
+		return &PrivateMessage{
+			Origin:      msg.Origin,
+			ID:          msg.ID,
+			Text:        msg.Text,
+			Destination: msg.Destination,
+			HopLimit:    msg.HopLimit - 1,
+		}, true
+	}
+}
+
+func (msg *DataReply) NextHop() (PointToPoint, bool) {
+	if msg.HopLimit <= 1 {
+		return msg, false
+	} else {
+		return &DataReply{
+			Origin:      msg.Origin,
+			Destination: msg.Destination,
+			HopLimit:    msg.HopLimit - 1,
+			HashValue:   msg.HashValue,
+			Data:        msg.Data,
+		}, true
+	}
+}
+func (msg *SearchReply) NextHop() (PointToPoint, bool) {
+	if msg.HopLimit <= 1 {
+		return msg, false
+	} else {
+		return &SearchReply{
+			Origin:      msg.Origin,
+			Destination: msg.Destination,
+			HopLimit:    msg.HopLimit - 1,
+			Results:     msg.Results,
+		}, true
 	}
 }
 
@@ -194,6 +222,7 @@ func NewDataReply(origin string, destination string, hash []byte, data []byte) *
 	return &o
 }
 
+/*
 func (msg *DataReply) NextHop() bool {
 	msg.HopLimit -= 1
 	if msg.HopLimit <= 0 {
@@ -202,6 +231,7 @@ func (msg *DataReply) NextHop() bool {
 		return true
 	}
 }
+*/
 
 func (msg *DataReply) OnFirstEmission(state *State) {
 }

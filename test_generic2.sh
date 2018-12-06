@@ -483,7 +483,7 @@ else
         fi
         for i in $keywords
         do
-            line="SEARCHING for keywords $i with budget 2"
+            line="SEARCHING for keywords $i with budget 0"
             if !(grep -q "$line" "${outputFiles[0]}")
             then
                 failed=true

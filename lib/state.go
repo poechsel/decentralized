@@ -3,7 +3,6 @@ package lib
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"strings"
 	"sync"
@@ -24,7 +23,7 @@ This include the messages, the peers...
 */
 
 type State struct {
-	lock_peers *sync.RWMutex
+	lock_peers *sync.Mutex
 	/* map of peer addresses to peer struct*/
 	known_peers map[string]*Peer
 	/* list of peer addresses */
@@ -32,7 +31,7 @@ type State struct {
 	/* database of all messages */
 	db *Database
 	/* routing table */
-	lock_routing *sync.RWMutex
+	lock_routing *sync.Mutex
 	routing      map[string]string
 
 	/* Two channels used to notify when we
@@ -40,6 +39,7 @@ type State struct {
 	addMessageChannels        [](chan Message)
 	addPrivateMessageChannels [](chan PrivateMessage)
 	addPeerChannels           [](chan string)
+	addSearchResultChannels   [](chan WebSearchResult)
 
 	lockDataAck *sync.Mutex
 	dataAck     map[DataAckKey]Stack
@@ -90,8 +90,8 @@ func (state *State) AddDataAck(peer string, hash string, c AckRequest) {
 }
 
 func (state *State) GetRoutingTableNames() []string {
-	state.lock_routing.RLock()
-	defer state.lock_routing.RUnlock()
+	state.lock_routing.Lock()
+	defer state.lock_routing.Unlock()
 	out := []string{}
 	for key, _ := range state.routing {
 		out = append(out, key)
@@ -104,8 +104,8 @@ func NewState() *State {
 	state := &State{
 		known_peers:         make(map[string]*Peer),
 		db:                  &db,
-		lock_peers:          &sync.RWMutex{},
-		lock_routing:        &sync.RWMutex{},
+		lock_peers:          &sync.Mutex{},
+		lock_routing:        &sync.Mutex{},
 		routing:             make(map[string]string),
 		lockDataAck:         &sync.Mutex{},
 		dataAck:             make(map[DataAckKey]Stack),
@@ -117,8 +117,8 @@ func NewState() *State {
 }
 
 func (state *State) getRouteTo(peer string) (string, bool) {
-	state.lock_routing.RLock()
-	defer state.lock_routing.RUnlock()
+	state.lock_routing.Lock()
+	defer state.lock_routing.Unlock()
 	route, ok := state.routing[peer]
 	return route, ok
 }
@@ -132,8 +132,8 @@ func (state *State) UpdateRoutingTable(peer string, address string) {
 
 /* Get a random peer that is not in the list avoir */
 func (state *State) getRandomPeer(avoid ...string) (*Peer, error) {
-	state.lock_peers.RLock()
-	defer state.lock_peers.RUnlock()
+	state.lock_peers.Lock()
+	defer state.lock_peers.Unlock()
 
 	restricted := make(map[string]bool)
 	for _, a := range avoid {
@@ -156,8 +156,8 @@ func (state *State) getRandomPeer(avoid ...string) (*Peer, error) {
 
 /* Get N random peers that are not in the list avoid */
 func (state *State) getNRandomPeer(n int, currentPeerAddress string) ([](*Peer), error) {
-	state.lock_peers.RLock()
-	defer state.lock_peers.RUnlock()
+	state.lock_peers.Lock()
+	defer state.lock_peers.Unlock()
 
 	var peers []string
 	for _, name := range state.list_peers {
@@ -173,7 +173,6 @@ func (state *State) getNRandomPeer(n int, currentPeerAddress string) ([](*Peer),
 			generated = append(generated, state.known_peers[p])
 			dbgnames = append(dbgnames, p)
 		}
-		log.Println("random -> ", dbgnames)
 		return generated, nil
 	} else {
 		perm := rand.Perm(len(peers))
@@ -184,7 +183,6 @@ func (state *State) getNRandomPeer(n int, currentPeerAddress string) ([](*Peer),
 				generated = append(generated, state.known_peers[peers[k]])
 			}
 		}
-		log.Println("random -> ", dbgnames)
 		return generated, nil
 	}
 }
@@ -198,12 +196,15 @@ func (state *State) AddNewMessageCallback(c chan Message) {
 func (state *State) AddNewPrivateMessageCallback(c chan PrivateMessage) {
 	state.addPrivateMessageChannels = append(state.addPrivateMessageChannels, c)
 }
+func (state *State) AddNewSearchResultCallback(c chan WebSearchResult) {
+	state.addSearchResultChannels = append(state.addSearchResultChannels, c)
+}
 
 /* If the peer at address "address" requests an ack, then dispatch
 the statuspacket "status" to him */
 func (state *State) dispatchStatusToPeer(address string, status *StatusPacket) bool {
-	state.lock_peers.RLock()
-	defer state.lock_peers.RUnlock()
+	state.lock_peers.Lock()
+	defer state.lock_peers.Unlock()
 
 	if peer, ok := state.known_peers[address]; ok {
 		if peer.DispatchStatus(status) {
@@ -233,8 +234,8 @@ func (state *State) AddPeer(address string) bool {
 }
 
 func (state *State) String() string {
-	state.lock_peers.RLock()
-	defer state.lock_peers.RUnlock()
+	state.lock_peers.Lock()
+	defer state.lock_peers.Unlock()
 	keys := make([]string, 0, len(state.known_peers))
 	for key := range state.known_peers {
 		keys = append(keys, key)
@@ -245,8 +246,8 @@ func (state *State) String() string {
 /* Execute a function on all peers. The function is not called on
 peers having address "avoid" */
 func (state *State) IterPeers(avoid string, fct func(*Peer)) {
-	state.lock_peers.RLock()
-	defer state.lock_peers.RUnlock()
+	state.lock_peers.Lock()
+	defer state.lock_peers.Unlock()
 	for addr, peer := range state.known_peers {
 		if avoid != addr {
 			fct(peer)

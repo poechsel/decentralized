@@ -3,7 +3,6 @@ package lib
 import (
 	"fmt"
 	"github.com/dedis/protobuf"
-	"log"
 	"math/rand"
 	"net"
 	"strings"
@@ -264,9 +263,8 @@ func (server *Gossiper) UploadFile(state *State, path string) {
 	metafile := SplitFile(path)
 
 	metahashstring := GetMetaHash(metafile)
-	log.Println("UPLOADED ", path, metahashstring)
 	WriteMetaFile(metafile)
-	state.FileManager.AddFile(path, metahashstring, uint64(len(metafile)/64))
+	state.FileManager.AddFile(path, metahashstring, uint64(len(metafile)/32))
 	for i := 0; i < len(metafile); i += 32 {
 		hash := metafile[i : i+32]
 		chunkhashstring := HashToUid(hash)
@@ -278,12 +276,10 @@ func (server *Gossiper) HandleSearchRequest(state *State, senderAddrString strin
 	if !state.searchRequestCacher.CanTreat(msg) {
 		return
 	}
-	log.Println(server.Name, "Success in handling seach request from", msg)
 	pattern := SearchPatternToRegex(strings.Join(msg.Keywords, ","))
 
 	// get our current search result and send them back to the origin
 	searchResultSelf := state.FileManager.toSearchReply(pattern)
-	log.Println(server.Name, strings.Join(msg.Keywords, ","), searchResultSelf)
 	searchReply := NewSearchReply(server.Name, msg.Origin, searchResultSelf)
 	go server.HandlePointToPointMessage(state, server.Address.String(), searchReply)
 
@@ -305,7 +301,6 @@ func (server *Gossiper) HandleSearchRequest(state *State, senderAddrString strin
 					newBudget += 1
 				}
 				nextRequest := NewSearchRequest(msg.Origin, uint64(newBudget), msg.Keywords)
-				log.Println(server.Name, "sending next to", *nextPeer)
 				go server.SendSearchRequest(nextRequest, nextPeer.Address)
 			}
 		}
@@ -314,15 +309,15 @@ func (server *Gossiper) HandleSearchRequest(state *State, senderAddrString strin
 
 func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int) {
 	receiveFileChan := make(chan (*SearchResultFrom), 256)
-	kstr := strings.Join(keywords, ",")
 
+	budgetSpecified := true
 	currentBudget := budget
-	if currentBudget < 2 {
+	if currentBudget == 0 {
+		budgetSpecified = false
 		currentBudget = 2
 	}
 
 	fmt.Println("SEARCHING for keywords", strings.Join(keywords, ","), "with budget", budget)
-	log.Println("SEARCHING for keywords", strings.Join(keywords, ","), "with budget", budget)
 
 	ticker := time.NewTicker(time.Second)
 	nResults := 0
@@ -331,18 +326,17 @@ func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int
 	uidSearch := state.searchRequestCacher.OpenSearch(keywords, receiveFileChan)
 	searchMerger := NewSearchMerger()
 
-	for currentBudget <= 32 && nResults < 2 {
+	for (budgetSpecified || currentBudget <= 32) && nResults < 2 {
 		select {
 		case <-ticker.C:
 			searchRequest := NewSearchRequest(server.Name, uint64(currentBudget), keywords)
-			log.Println("new search request", kstr, currentBudget)
 			go server.HandleSearchRequest(state, server.Address.String(), searchRequest)
-			currentBudget *= 2
+			if !budgetSpecified {
+				currentBudget *= 2
+			}
 
 		case result := <-receiveFileChan:
 			fmt.Println(result.String())
-			log.Println("MATCH", result.From, result.Result.FileName)
-			log.Println(result.String())
 			for _, chunkId := range result.Result.ChunkMap {
 				state.FileKnowledgeDB.Insert(HashToUid(result.Result.MetafileHash), int(chunkId), result.From)
 			}
@@ -352,6 +346,9 @@ func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int
 				key := SearchAnswer{FileName: result.Result.FileName, MetaHash: HashToUid(result.Result.MetafileHash)}
 				results[key] = true
 				nResults += 1
+				for _, c := range state.addSearchResultChannels {
+					c <- WebSearchResult{FileName: key.FileName, MetaHash: key.MetaHash, Keywords: strings.Join(keywords, ",")}
+				}
 			}
 		}
 	}
@@ -383,9 +380,8 @@ func (server *Gossiper) HandlePointToPointMessage(state *State, senderAddrString
 		}
 	} else {
 		/* we make a shallow copy of msg */
-		next_msg := msg
-		ok := next_msg.NextHop()
-		next_address, ok2 := state.getRouteTo(msg.GetDestination())
+		next_msg, ok := msg.NextHop()
+		next_address, ok2 := state.getRouteTo(next_msg.GetDestination())
 		if ok && ok2 {
 			address, _ := AddrOfString(next_address)
 			server.SendPacket(next_msg.ToPacket(), address)

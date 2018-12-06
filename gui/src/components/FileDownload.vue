@@ -1,10 +1,10 @@
 <template>
         <div class="modal-card" style="width: auto">
             <header class="modal-card-head">
-                <p class="modal-card-title">Upload</p>
+                <p class="modal-card-title">Download</p>
             </header>
             <section class="modal-card-body">
-              <b-field label="Simple">
+              <b-field label="From Peer">
                 <b-select placeholder="Select a peer" v-model="selectedpeer" expanded required>
                   <option
                     v-for="peer in peers"
