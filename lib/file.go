@@ -37,11 +37,11 @@ func InitializeTempDir(server_name string) {
 
 /* TODO: launch several goroutines reading separate chunk of the file
 to go faster */
-func SplitFile(file_name string) []byte {
+func SplitFile(file_name string) ([]byte, int64) {
 	file, err := os.Open(SHAREDFOLDER + file_name)
 	if err != nil {
 		fmt.Println(err)
-		return []byte{}
+		return []byte{}, 0
 	}
 	defer file.Close()
 
@@ -49,8 +49,12 @@ func SplitFile(file_name string) []byte {
 
 	metafile := []byte{}
 
+	filesize := int64(0)
+
 	for {
 		bytesread, err := file.Read(buffer)
+
+		filesize += int64(bytesread)
 
 		if err != nil {
 			if err != io.EOF {
@@ -73,7 +77,7 @@ func SplitFile(file_name string) []byte {
 			chunk_file.Close()
 		}
 	}
-	return metafile
+	return metafile, filesize
 }
 
 func ReconstructFile(out_file string, metafile []byte) {

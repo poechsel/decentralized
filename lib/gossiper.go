@@ -264,10 +264,11 @@ func (server *Gossiper) DownloadFile(state *State, peer string, metahash []byte,
 
 // path is relative to share folder
 func (server *Gossiper) UploadFile(state *State, path string) {
-	metafile := SplitFile(path)
+	metafile, filesize := SplitFile(path)
 
 	metahashstring := GetMetaHash(metafile)
 	WriteMetaFile(metafile)
+	state.BlockChain.AddTxPublish <- NewTxPublish(path, UidToHash(metahashstring), filesize)
 	state.FileManager.AddFile(path, metahashstring, uint64(len(metafile)/32))
 	for i := 0; i < len(metafile); i += 32 {
 		hash := metafile[i : i+32]
@@ -360,9 +361,21 @@ func (server *Gossiper) LaunchSearch(state *State, keywords []string, budget int
 	fmt.Println("SEARCH FINISHED")
 }
 
+func (server *Gossiper) ListenBlockChainEvents(state *State) {
+	for {
+		select {
+		case block := <-state.BlockChain.ReleaseBlock:
+			next := NewBlockPublish(block)
+			server.Broadcast(
+				"",
+				state,
+				next.ToPacket())
+		}
+	}
+}
+
 func (server *Gossiper) HandleBroadcastWithLimit(state *State, senderAddrString string, msg BroadcastWithLimit) {
-	if state.BroadcastWithLimitCacher.CanTreat(msg) && msg.IsValid(state) {
-		msg.Received(state)
+	if state.BroadcastWithLimitCacher.CanTreat(msg) && msg.IsValidAndReceive(state) {
 		next, ok := msg.NextHop()
 		if ok {
 			server.Broadcast(

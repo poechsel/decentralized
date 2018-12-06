@@ -8,6 +8,97 @@ import (
 	"sync"
 )
 
+type BlockChain struct {
+	nameToHash     map[string][]byte
+	allBlocks      [](*Block)
+	mapBlocks      map[[32]byte](*Block)
+	nextFilesToAdd []TxPublish
+
+	blockMinedSignal chan Block
+
+	ReleaseBlock chan Block
+	AddBlock     chan Block
+	TryBlock     chan TryWrapper
+	AddTxPublish chan TxPublish
+	TryTxPublish chan TryWrapper
+}
+
+type TryWrapper struct {
+	callback chan bool
+	content  interface{}
+}
+
+func NewTryWrapper(c interface{}) *TryWrapper {
+	return &TryWrapper{content: c, callback: make(chan bool)}
+}
+
+func (bc *BlockChain) Work() {
+	go func(transaction []TxPublish, prevhash [32]byte) {
+		nextblock := Mine(transaction, prevhash)
+		bc.blockMinedSignal <- *nextblock
+	}([]TxPublish{}, [32]byte{})
+
+	for {
+		select {
+		case block := <-bc.blockMinedSignal:
+			transaction := make([]TxPublish, len(bc.nextFilesToAdd))
+			copy(bc.nextFilesToAdd, transaction)
+
+			go func(transaction []TxPublish, prevhash [32]byte) {
+				nextblock := Mine(transaction, prevhash)
+				bc.blockMinedSignal <- *nextblock
+			}(transaction, block.Hash())
+
+			bc.AddBlock <- block
+
+		case block := <-bc.AddBlock:
+			if _, ok := bc.mapBlocks[block.PrevHash]; ok && block.IsValid() {
+				bc.allBlocks = append(bc.allBlocks, &block)
+				bc.mapBlocks[block.Hash()] = &block
+				for _, t := range block.Transactions {
+					bc.nameToHash[t.File.Name] = t.File.MetafileHash
+				}
+			}
+
+		case tryBlock := <-bc.TryBlock:
+			block := tryBlock.content.(Block)
+			_, ok := bc.mapBlocks[block.Hash()]
+			tryBlock.callback <- block.IsValid() && ok
+
+		case tryTxPublish := <-bc.TryTxPublish:
+			t := tryTxPublish.content.(TxPublish)
+			_, ok := bc.nameToHash[t.File.Name]
+			seen := false
+			for _, f := range bc.nextFilesToAdd {
+				seen = seen && f.File.Name == t.File.Name &&
+					f.File.Size == t.File.Size &&
+					HashToUid(f.File.MetafileHash) == HashToUid(t.File.MetafileHash)
+			}
+
+			tryTxPublish.callback <- !ok && !seen
+
+		case txPublish := <-bc.AddTxPublish:
+			bc.nextFilesToAdd = append(bc.nextFilesToAdd, txPublish)
+		}
+	}
+}
+
+func NewBlockChain() *BlockChain {
+	return &BlockChain{
+		nameToHash:       make(map[string]([]byte)),
+		allBlocks:        []*Block{},
+		mapBlocks:        make(map[[32]byte]*Block),
+		nextFilesToAdd:   []TxPublish{},
+		blockMinedSignal: make(chan Block, 10),
+		ReleaseBlock:     make(chan Block, 64),
+		AddBlock:         make(chan Block, 64),
+		TryBlock:         make(chan TryWrapper, 64),
+		AddTxPublish:     make(chan TxPublish, 64),
+		TryTxPublish:     make(chan TryWrapper, 64),
+	}
+
+}
+
 type BroadcastWithLimitCacher struct {
 	lock  *sync.Mutex
 	cache map[[32]byte]bool
@@ -35,8 +126,9 @@ func (b *BroadcastWithLimitCacher) CanTreat(bw BroadcastWithLimit) bool {
 type BroadcastWithLimit interface {
 	NextHop() (BroadcastWithLimit, bool)
 	ToKey() [32]byte
-	IsValid(state *State) bool
-	Received(state *State)
+	/* return false if we can't consider the message
+	If we can consider it, then will also act on it */
+	IsValidAndReceive(state *State) bool
 	ToPacket() *GossipPacket
 }
 
@@ -45,13 +137,28 @@ type TxPublish struct {
 	HopLimit uint32
 }
 
-func (msg *TxPublish) IsValid(state *State) bool {
-	// TODO
-	return true
+func NewTxPublish(name string, metafilehash []byte, filesize int64) TxPublish {
+	return TxPublish{
+		File: File{Name: name,
+			MetafileHash: metafilehash,
+			Size:         filesize},
+		HopLimit: 10,
+	}
 }
 
-func (msg *TxPublish) Received(state *State) {
-
+func (msg *TxPublish) IsValidAndReceive(state *State) bool {
+	var txpublish TxPublish
+	txpublish = *msg
+	try := NewTryWrapper(txpublish)
+	state.BlockChain.TryBlock <- *try
+	select {
+	case answer := <-try.callback:
+		if answer {
+			state.BlockChain.AddTxPublish <- txpublish
+		}
+		return answer
+	}
+	return false
 }
 
 func (msg *TxPublish) ToPacket() *GossipPacket {
@@ -82,6 +189,10 @@ type BlockPublish struct {
 	HopLimit uint32
 }
 
+func NewBlockPublish(block Block) *BlockPublish {
+	return &BlockPublish{Block: block, HopLimit: 20}
+}
+
 func (msg *BlockPublish) NextHop() (BroadcastWithLimit, bool) {
 	if msg.HopLimit <= 1 {
 		return msg, false
@@ -92,13 +203,9 @@ func (msg *BlockPublish) NextHop() (BroadcastWithLimit, bool) {
 		}, true
 	}
 }
-func (msg *BlockPublish) IsValid(state *State) bool {
+func (msg *BlockPublish) IsValidAndReceive(state *State) bool {
 	// TODO
 	return true
-}
-
-func (msg *BlockPublish) Received(state *State) {
-
 }
 
 func (msg *BlockPublish) ToPacket() *GossipPacket {
@@ -125,17 +232,22 @@ func NewBlock(prev [32]byte, nonce [32]byte, transactions []TxPublish) *Block {
 	}
 }
 
+func (b *Block) IsValid() bool {
+	hash := b.Hash()
+	isValid := true
+	for i := 0; i < 16; i++ {
+		isValid = isValid && (hash[i] != 0)
+	}
+	return isValid
+}
+
 func Mine(transactions []TxPublish, PrevHash [32]byte) *Block {
 	for {
 		nonce := [32]byte{}
 		rand.Read(nonce[:])
 		block := NewBlock(PrevHash, nonce, transactions)
-		hash := block.Hash()
-		isValid := true
-		for i := 0; i < 16; i++ {
-			isValid = isValid && (hash[i] != 0)
-		}
-		if isValid {
+		if block.IsValid() {
+			hash := block.Hash()
 			fmt.Println("FOUND-BLOCK", HashToUid(hash[:]))
 			return block
 		}

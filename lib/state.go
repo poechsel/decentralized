@@ -48,6 +48,7 @@ type State struct {
 	searchRequestCacher      *SearchRequestCacher
 	FileKnowledgeDB          *FileKnowledgeDB
 	BroadcastWithLimitCacher *BroadcastWithLimitCacher
+	BlockChain               *BlockChain
 }
 
 func (state *State) DispatchDataAck(peer string, hash string, ack DataReply) bool {
@@ -114,6 +115,7 @@ func NewState() *State {
 		searchRequestCacher:      NewSearchRequestCacher(),
 		FileKnowledgeDB:          NewFileKnowledgeDB(),
 		BroadcastWithLimitCacher: NewBroadcastWithLimitCacher(),
+		BlockChain:               NewBlockChain(),
 	}
 	return state
 }

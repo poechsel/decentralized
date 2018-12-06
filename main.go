@@ -70,6 +70,7 @@ func main() {
 	}
 
 	go gossiper.RefreshRouteLoop(state)
+	go gossiper.ListenBlockChainEvents(state)
 
 	/* loop on incoming messages */
 	for {
