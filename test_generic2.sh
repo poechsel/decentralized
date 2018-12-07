@@ -337,7 +337,7 @@ else
                         ./client/client -UIPort=${UIPorts[$i]} -file="${files[$i,$i,$j,0]}"
                         if [[ $TestBlockchain = true ]]
                         then
-                            sleep 60
+                            sleep 15
                         fi
                     fi
                 done

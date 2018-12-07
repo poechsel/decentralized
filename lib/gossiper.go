@@ -3,6 +3,7 @@ package lib
 import (
 	"fmt"
 	"github.com/dedis/protobuf"
+	"log"
 	"math/rand"
 	"net"
 	"strings"
@@ -164,6 +165,7 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 	} else if packet.TxPublish != nil {
 		go server.HandleBroadcastWithLimit(state, sourceString, packet.TxPublish)
 	} else if packet.BlockPublish != nil {
+		log.Println("rec BlockPublish")
 		go server.HandleBroadcastWithLimit(state, sourceString, packet.BlockPublish)
 	}
 	fmt.Println("PEERS", state)
@@ -268,7 +270,8 @@ func (server *Gossiper) UploadFile(state *State, path string) {
 
 	metahashstring := GetMetaHash(metafile)
 	WriteMetaFile(metafile)
-	state.BlockChain.AddTxPublish <- NewTxPublish(path, UidToHash(metahashstring), filesize)
+	txpublish := NewTxPublish(path, UidToHash(metahashstring), filesize)
+	go server.HandleBroadcastWithLimit(state, server.Address.String(), &txpublish)
 	state.FileManager.AddFile(path, metahashstring, uint64(len(metafile)/32))
 	for i := 0; i < len(metafile); i += 32 {
 		hash := metafile[i : i+32]

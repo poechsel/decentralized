@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"math/rand"
+	"strings"
 	"sync"
 )
 
@@ -13,6 +15,8 @@ type BlockChain struct {
 	allBlocks      [](*Block)
 	mapBlocks      map[[32]byte](*Block)
 	nextFilesToAdd []TxPublish
+	isMining       bool
+	prevHash       [32]byte
 
 	blockMinedSignal chan Block
 
@@ -32,59 +36,117 @@ func NewTryWrapper(c interface{}) *TryWrapper {
 	return &TryWrapper{content: c, callback: make(chan bool)}
 }
 
-func (bc *BlockChain) Work() {
-	go func(transaction []TxPublish, prevhash [32]byte) {
-		nextblock := Mine(transaction, prevhash)
-		bc.blockMinedSignal <- *nextblock
-	}([]TxPublish{}, [32]byte{})
+func (bc *BlockChain) ShowChain() {
+	s := ""
+	for i := len(bc.allBlocks) - 1; i >= 0; i-- {
+		block := bc.allBlocks[i]
+		hash := block.Hash()
+		blockstr := HashToUid(hash[:]) + ":"
+		blockstr += HashToUid(block.PrevHash[:]) + ":"
 
+		trstr := []string{}
+		for _, ct := range block.Transactions {
+			trstr = append(trstr, ct.File.Name)
+		}
+
+		blockstr += strings.Join(trstr, ",")
+
+		s += "[" + blockstr + "]" + " "
+	}
+
+	fmt.Println("CHAIN", s)
+	log.Println("CHAIN", s)
+}
+
+func IsZeroHash(hash []byte) bool {
+	for _, x := range hash {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func (bc *BlockChain) Mine(transaction []TxPublish, prevhash [32]byte) {
+	nextblock := Mine(transaction, prevhash)
+	bc.blockMinedSignal <- *nextblock
+}
+
+func (bc *BlockChain) Work() {
 	for {
 		select {
 		case block := <-bc.blockMinedSignal:
+			bc.isMining = false
 			transaction := make([]TxPublish, len(bc.nextFilesToAdd))
-			copy(bc.nextFilesToAdd, transaction)
+			copy(transaction, bc.nextFilesToAdd)
+			bc.nextFilesToAdd = []TxPublish{}
 
-			go func(transaction []TxPublish, prevhash [32]byte) {
-				nextblock := Mine(transaction, prevhash)
-				bc.blockMinedSignal <- *nextblock
-			}(transaction, block.Hash())
+			if len(transaction) > 0 {
+				bc.isMining = true
+				go bc.Mine(transaction, block.Hash())
+			}
 
 			bc.AddBlock <- block
+			bc.ReleaseBlock <- block
 
 		case block := <-bc.AddBlock:
-			if _, ok := bc.mapBlocks[block.PrevHash]; ok && block.IsValid() {
+			log.Println("testing add", block.PrevHash, IsZeroHash(block.PrevHash[:]))
+			if _, ok := bc.mapBlocks[block.PrevHash]; (ok || IsZeroHash(block.PrevHash[:])) && block.IsValid() {
 				bc.allBlocks = append(bc.allBlocks, &block)
+				bc.prevHash = block.Hash()
 				bc.mapBlocks[block.Hash()] = &block
+
+				nextfiles := []TxPublish{}
+
 				for _, t := range block.Transactions {
 					bc.nameToHash[t.File.Name] = t.File.MetafileHash
+					seen := false
+					for _, f := range block.Transactions {
+						seen = seen || (f.File.Name == t.File.Name &&
+							f.File.Size == t.File.Size &&
+							HashToUid(f.File.MetafileHash) == HashToUid(t.File.MetafileHash))
+					}
+					if !seen {
+						nextfiles = append(nextfiles, t)
+					}
 				}
+				bc.nextFilesToAdd = nextfiles
+
+				bc.ShowChain()
 			}
 
 		case tryBlock := <-bc.TryBlock:
 			block := tryBlock.content.(Block)
 			_, ok := bc.mapBlocks[block.Hash()]
-			tryBlock.callback <- block.IsValid() && ok
+			tryBlock.callback <- block.IsValid() && !ok
 
 		case tryTxPublish := <-bc.TryTxPublish:
 			t := tryTxPublish.content.(TxPublish)
 			_, ok := bc.nameToHash[t.File.Name]
 			seen := false
 			for _, f := range bc.nextFilesToAdd {
-				seen = seen && f.File.Name == t.File.Name &&
+				seen = seen || (f.File.Name == t.File.Name &&
 					f.File.Size == t.File.Size &&
-					HashToUid(f.File.MetafileHash) == HashToUid(t.File.MetafileHash)
+					HashToUid(f.File.MetafileHash) == HashToUid(t.File.MetafileHash))
 			}
 
 			tryTxPublish.callback <- !ok && !seen
 
 		case txPublish := <-bc.AddTxPublish:
 			bc.nextFilesToAdd = append(bc.nextFilesToAdd, txPublish)
+
+			if bc.isMining == false {
+				bc.isMining = true
+				go bc.Mine(bc.nextFilesToAdd, bc.prevHash)
+				bc.nextFilesToAdd = []TxPublish{}
+			}
 		}
 	}
 }
 
 func NewBlockChain() *BlockChain {
 	return &BlockChain{
+		isMining:         false,
 		nameToHash:       make(map[string]([]byte)),
 		allBlocks:        []*Block{},
 		mapBlocks:        make(map[[32]byte]*Block),
@@ -95,6 +157,7 @@ func NewBlockChain() *BlockChain {
 		TryBlock:         make(chan TryWrapper, 64),
 		AddTxPublish:     make(chan TxPublish, 64),
 		TryTxPublish:     make(chan TryWrapper, 64),
+		prevHash:         [32]byte{},
 	}
 
 }
@@ -150,7 +213,7 @@ func (msg *TxPublish) IsValidAndReceive(state *State) bool {
 	var txpublish TxPublish
 	txpublish = *msg
 	try := NewTryWrapper(txpublish)
-	state.BlockChain.TryBlock <- *try
+	state.BlockChain.TryTxPublish <- *try
 	select {
 	case answer := <-try.callback:
 		if answer {
@@ -194,6 +257,7 @@ func NewBlockPublish(block Block) *BlockPublish {
 }
 
 func (msg *BlockPublish) NextHop() (BroadcastWithLimit, bool) {
+	log.Println("#####", "ok")
 	if msg.HopLimit <= 1 {
 		return msg, false
 	} else {
@@ -204,8 +268,19 @@ func (msg *BlockPublish) NextHop() (BroadcastWithLimit, bool) {
 	}
 }
 func (msg *BlockPublish) IsValidAndReceive(state *State) bool {
-	// TODO
-	return true
+	log.Println("##", msg)
+	try := NewTryWrapper(msg.Block)
+	state.BlockChain.TryBlock <- *try
+	select {
+	case answer := <-try.callback:
+		log.Println("---->", answer)
+		if answer {
+			log.Println("#########", msg)
+			state.BlockChain.AddBlock <- msg.Block
+		}
+		return answer
+	}
+	return false
 }
 
 func (msg *BlockPublish) ToPacket() *GossipPacket {
@@ -235,8 +310,9 @@ func NewBlock(prev [32]byte, nonce [32]byte, transactions []TxPublish) *Block {
 func (b *Block) IsValid() bool {
 	hash := b.Hash()
 	isValid := true
-	for i := 0; i < 16; i++ {
-		isValid = isValid && (hash[i] != 0)
+	/* Because there are 8bit in a byte */
+	for i := 0; i < 16/8; i++ {
+		isValid = isValid && (hash[i] == 0)
 	}
 	return isValid
 }
@@ -248,7 +324,7 @@ func Mine(transactions []TxPublish, PrevHash [32]byte) *Block {
 		block := NewBlock(PrevHash, nonce, transactions)
 		if block.IsValid() {
 			hash := block.Hash()
-			fmt.Println("FOUND-BLOCK", HashToUid(hash[:]))
+			fmt.Println("FOUND-BLOCK", "["+HashToUid(hash[:])+"]")
 			return block
 		}
 	}
