@@ -3,7 +3,6 @@ package lib
 import (
 	"fmt"
 	"github.com/dedis/protobuf"
-	"log"
 	"math/rand"
 	"net"
 	"strings"
@@ -165,7 +164,6 @@ func (server *Gossiper) ServerHandler(state *State, request Packet) {
 	} else if packet.TxPublish != nil {
 		go server.HandleBroadcastWithLimit(state, sourceString, packet.TxPublish)
 	} else if packet.BlockPublish != nil {
-		log.Println("rec BlockPublish")
 		go server.HandleBroadcastWithLimit(state, sourceString, packet.BlockPublish)
 	}
 	fmt.Println("PEERS", state)

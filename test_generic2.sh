@@ -823,7 +823,7 @@ else
         # each process will mine a block
         for i in `seq 0 $(($numberOfPeers - 1))`
         do
-            if !(grep -Eq "FOUND-BLOCK \[0{4}[a-f0-9]{60}\]" "${outputFiles[$i]}")
+            if !(grep -Eq "FOUND-BLOCK 0{4}[a-f0-9]{60}" "${outputFiles[$i]}")
             then
                 failed=true
                 if [[ "$DEBUG" == "true" ]] ; then
@@ -841,7 +841,7 @@ else
         for i in `seq 0 $(($numberOfPeers - 1))`
         do
             # one block long chain
-            if !(grep -Eq "CHAIN \[0{4}[a-f0-9]{60}:0{64}:(local|global|neighbor|indirect|test|,)+\]" "${outputFiles[$i]}")
+            if !(grep -Eq "CHAIN 0{4}[a-f0-9]{60}:0{64}:(local|global|neighbor|indirect|test|,)+" "${outputFiles[$i]}")
             then
                 failed=true
                 if [[ "$DEBUG" == "true" ]] ; then
@@ -850,7 +850,7 @@ else
             fi
         done
         # two blocks long chain: only mandatory for node A
-        if !(grep -Eq "CHAIN \[0{4}[a-f0-9]{60}:(0{4}[a-f0-9]{60}):(local|global|neighbor|indirect|test|,)+\] \[\1:0{64}:(local|global|neighbor|indirect|test|,)+\]" "${outputFiles[0]}")
+        if !(grep -Eq "CHAIN 0{4}[a-f0-9]{60}:(0{4}[a-f0-9]{60}):(local|global|neighbor|indirect|test|,)+ \1:0{64}:(local|global|neighbor|indirect|test|,)+" "${outputFiles[0]}")
         then
             failed=true
             if [[ "$DEBUG" == "true" ]] ; then
@@ -860,7 +860,7 @@ else
         # check consistancy of the hashes
         for i in `seq 0 $(($numberOfPeers - 1))`
         do
-            if (cat "${outputFiles[$i]}" | awk '$0 ~ "\\[.*\\].*\\[.*\\]" { print $0; }' | sed 's/:\(.*\):[^\[]*\[\1//g' | grep -Eq '\[.*\] \[.*\]')
+            if (cat "${outputFiles[$i]}" | awk '$0 ~ ".*.*.*" { print $0; }' | sed 's/:\(.*\):[^\[]*\[\1//g' | grep -Eq '\[.* .*')
             then
                 failed=true
                 if [[ "$DEBUG" == "true" ]] ; then
