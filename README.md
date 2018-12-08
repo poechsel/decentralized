@@ -63,3 +63,7 @@ The peerster itself holds no internal information about the file stores on its i
 - the implementation is easy and unified
 
 Most of the cost of accessing the hard drive might be hidden by the cost of sending a message on the network.
+
+O
+
+Misc note: `test_generated.sh` and `test_generated2.sh` weren't wrote by me. If you lanch `test_generated2.sh`, it is normal that some tests are put as failed (and they should be about the blockchain). To test the blockchain I used the scripts as a way to launch a given topology easily, and then cross checked the logs to visualize any absurdity. 

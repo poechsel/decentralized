@@ -228,7 +228,7 @@ export default {
             opened_private_channels: [],
             private_channels: {},
             opened_channel: 0,
-            search_keywords: 0,
+            search_keywords: "",
             selected_metahash_search: "",
             searches: [
             ],

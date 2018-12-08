@@ -35,7 +35,7 @@
             </section>
             <footer class="modal-card-foot">
                 <button class="button" type="button" @click="$parent.close()">Close</button>
-                <a class="button is-primary" @click="upload">Upload</a>
+                <a class="button is-primary" @click="upload">Download</a>
             </footer>
         </div>
     </template>
