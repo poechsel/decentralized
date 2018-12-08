@@ -6,6 +6,7 @@
 ### Peerster
 
 To install peerster, make sure that 'mux' and 'dedis/protobuf' are installed and present in your `$GOPATH`. Then, type `go build`. To build the client, `cd` into the folder `client` and execute `go build`.
+One new command line option is available: `-mine-flood`. When activated, we will mine continously new blocks. Otherwise, we will only mine new blocks when they are non empty.
 
 ### Graphic Frontend
 
@@ -36,12 +37,23 @@ The code is divided in several parts:
     - `webserver.go`: the webserver for the frontend
     - `sparseSequence.go`: a datastructure to answer quickly to query of the type "which is the first non present element in a sequence". Discarded because I wrote it while non fully understanding the subject.
     - `file.go`: every functions having something to do with file upload and download (splitting in chunk, file reconstruction...)
+    - `blockchain.go`: implementation of the blockchain
+    - `fileKnowledge.go`: represent the knowledge we have about our world. Allow to answer questions as 'which peer have this metafile?', 'which peer have chunk xxx'.
+- `searchRequest.go`: Deal with pending file searches, and allows to broadcast answers to the matchins searches.
+    - `mergeResult.go`: able to merge the result of two search results, thus allowing us to detect matches.
+
 
 ## Implementation details
+
+### Inference of missing blocks for the blockchain
+
+The main difficulty to implement a valid conscencius algorithm for the blockchain is to understand that as we will receive some blocks later than expected (ex: receive A, then the father of A), we might have a disconnected blockchain. When we finally get a block that will join disconnected part, we want to make sure that we update the longest chain accordingly.
 
 ### Unified point to point routing
 
 The routing for point to point messages is implemented using an interface. This means that the routing algorithm is implemented once and can be used to route both PrivateMessage, DataReply or DataRequest.
+
+The same logic (creation of an interface) was used for broadcast message with a hop limit.
 
 ### The harddrive is a hashtable
 
