@@ -12,16 +12,16 @@ import (
 )
 
 type BlockChainNode struct {
-	parent      [32]byte
-	hasChildren bool
-	block       *Block
+	parent   [32]byte
+	children [][32]byte
+	block    *Block
 }
 
 func NewBlockChainNode(block *Block) *BlockChainNode {
 	return &BlockChainNode{
-		parent:      block.PrevHash,
-		hasChildren: false,
-		block:       block,
+		parent:   block.PrevHash,
+		children: [][32]byte{},
+		block:    block,
 	}
 }
 
@@ -48,6 +48,11 @@ type BlockChain struct {
 	nextFilesToAdd []TxPublish
 	isMining       bool
 	headChain      [32]byte
+	// Sometime, we can get a Block A with parent B before
+	// receiving Block B. We store somewhere that we now that
+	// B has a child, so to set a correct information when creating
+	// it. We store the list of pending children for this node
+	waitingToBeResolved map[[32]byte][][32]byte
 
 	blockMinedSignal chan MineEndSignal
 
@@ -58,14 +63,13 @@ type BlockChain struct {
 	TryTxPublish chan TryWrapper
 }
 
-func (blockchain *BlockChain) FindForkHelper(start [32]byte, seen map[[32]byte]bool) {
+func (blockchain *BlockChain) FindForkHelper(start [32]byte, seen map[[32]byte]bool, conv map[[32]byte]string) {
 	if _, ok := seen[start]; ok {
 	} else {
 		seen[start] = true
 		if _, ok := blockchain.blocks[start]; !ok || IsZeroHash(start[:]) {
 		} else {
-			blockchain.UpdateBlockHasChild(start)
-			blockchain.FindForkHelper(blockchain.blocks[start].parent, seen)
+			blockchain.FindForkHelper(blockchain.blocks[start].parent, seen, conv)
 		}
 	}
 }
@@ -78,7 +82,6 @@ func (blockchain *BlockChain) ReverseTransactionsChain(start [32]byte, step int,
 		if _, ok := blockchain.blocks[start]; !ok || IsZeroHash(start[:]) {
 			return step, start
 		} else {
-			blockchain.UpdateBlockHasChild(start)
 			//fmt.Println("reverting ", conv[start])
 			blockchain.ReverseTransaction(blockchain.blocks[start].block)
 			return blockchain.ReverseTransactionsChain(blockchain.blocks[start].parent, step+1, seen, conv)
@@ -88,34 +91,28 @@ func (blockchain *BlockChain) ReverseTransactionsChain(start [32]byte, step int,
 func (blockchain *BlockChain) ApplyTransactionsChain(start [32]byte, until [32]byte, conv map[[32]byte]string) {
 	if _, ok := blockchain.blocks[start]; !ok || IsZeroHash(start[:]) || start == until {
 	} else {
-		blockchain.UpdateBlockHasChild(start)
 		//fmt.Println("applying ", conv[start])
 		blockchain.ApplyTransaction(blockchain.blocks[start].block)
 		blockchain.ApplyTransactionsChain(blockchain.blocks[start].parent, until, conv)
 	}
 }
 
-func (BlockChain *BlockChain) UpdateBlockHasChild(child [32]byte) {
-	if block, ok := BlockChain.blocks[child]; ok {
-		if blockParent, ok2 := BlockChain.blocks[block.parent]; ok2 {
-			blockParent.hasChildren = true
-		}
-	}
-}
-
 func (BlockChain *BlockChain) Dump(conv map[[32]byte]string) {
 	for hash, node := range BlockChain.blocks {
-		fmt.Println(conv[hash], "->", conv[node.parent], node.hasChildren)
+		fmt.Println(conv[hash], "->", conv[node.parent], len(node.children))
 	}
 }
 
+/** Compute the length of the chain ending at [start]
+Sometime we can be missing a node (for ex for the chain a--b--[c]--d--e if
+we suppose we haven't received [c] when asking for the length of the chain
+ending at e). In this case we return a negative length **/
 func (BlockChain *BlockChain) ComputeLengthChain(start [32]byte) int {
 	if IsZeroHash(start[:]) {
 		return 0
 	} else if _, ok := BlockChain.blocks[start]; !ok {
 		return -(int(^uint(0) >> 1)) - 1
 	} else {
-		BlockChain.UpdateBlockHasChild(start)
 		return BlockChain.ComputeLengthChain(BlockChain.blocks[start].parent) + 1
 	}
 }
@@ -124,11 +121,13 @@ func (blockchain *BlockChain) ApplyTransaction(block *Block) {
 	for _, t := range block.Transactions {
 		if _, ok := blockchain.nameToHash[t.File.Name]; !ok {
 			hash := [32]byte{}
-			for i, c := range t.File.MetafileHash {
+			/*for i, c := range t.File.MetafileHash {
 				if i < len(hash) {
 					hash[i] = c
 				}
 			}
+			*/
+			copy(hash[:], t.File.MetafileHash)
 			blockchain.nameToHash[t.File.Name] = NewBlockChainMapEntry(hash)
 		}
 		blockchain.nameToHash[t.File.Name].nb += 1
@@ -139,11 +138,46 @@ func (blockchain *BlockChain) ReverseTransaction(block *Block) {
 	for _, t := range block.Transactions {
 		if _, ok := blockchain.nameToHash[t.File.Name]; ok {
 			blockchain.nameToHash[t.File.Name].nb -= 1
-			if blockchain.nameToHash[t.File.Name].nb == 0 {
+			if blockchain.nameToHash[t.File.Name].nb <= 0 {
 				delete(blockchain.nameToHash, t.File.Name)
 			}
 		}
 	}
+}
+
+func (blockchain *BlockChain) getLeaves(start [32]byte) [][32]byte {
+	if block, ok := blockchain.blocks[start]; ok {
+		if len(block.children) == 0 {
+			return [][32]byte{start}
+		} else {
+			o := [][32]byte{}
+			for _, child := range block.children {
+				o = append(o, blockchain.getLeaves(child)...)
+			}
+			return o
+		}
+	} else {
+		return [][32]byte{}
+	}
+}
+
+func (blockchain *BlockChain) UpdateLongestChain(conv map[[32]byte]string, hash [32]byte) {
+	if blockchain.ComputeLengthChain(hash) > blockchain.ComputeLengthChain(blockchain.headChain) {
+		seen := make(map[[32]byte]bool)
+		blockchain.FindForkHelper(hash, seen, conv)
+		//	fmt.Println()
+		rewind, stop := blockchain.ReverseTransactionsChain(blockchain.headChain, 0, seen, conv)
+		//	fmt.Println()
+		//	fmt.Println(rewind)
+		blockchain.ApplyTransactionsChain(hash, stop, conv)
+		block := blockchain.blocks[hash].block
+		if block.PrevHash != blockchain.headChain {
+			fmt.Println("FORK-LONGER", "rewind", rewind, "blocks")
+			log.Println("FORK-LONGER", "rewind", rewind, "blocks")
+		}
+		blockchain.headChain = hash
+	}
+
 }
 
 func (blockchain *BlockChain) AppendBlock(conv map[[32]byte]string, block *Block) {
@@ -154,9 +188,14 @@ func (blockchain *BlockChain) AppendBlock(conv map[[32]byte]string, block *Block
 	//fmt.Println("\n\n\nInserting ", conv[block.Hash()], "head =", conv[blockchain.headChain])
 	//fmt.Println(HashToUid(hash[:]), "<>", HashToUid(blockchain.headChain[:]))
 
-	if parentBcn, ok := blockchain.blocks[block.PrevHash]; ok && !parentBcn.hasChildren {
+	if parentBcn, ok := blockchain.blocks[block.PrevHash]; (ok && len(parentBcn.children) > 0) ||
+		(!ok && len(blockchain.waitingToBeResolved[block.PrevHash]) > 0) {
 		isForkShorter = true
-		parentBcn.hasChildren = true
+	}
+	if parentBcn, ok := blockchain.blocks[block.PrevHash]; ok {
+		parentBcn.children = append(parentBcn.children, hash)
+	} else {
+		blockchain.waitingToBeResolved[block.PrevHash] = append(blockchain.waitingToBeResolved[block.PrevHash], hash)
 	}
 
 	if isForkShorter {
@@ -169,18 +208,31 @@ func (blockchain *BlockChain) AppendBlock(conv map[[32]byte]string, block *Block
 
 	//fmt.Println(blockchain.ComputeLengthChain(hash), blockchain.ComputeLengthChain(blockchain.headChain))
 
-	if blockchain.ComputeLengthChain(hash) > blockchain.ComputeLengthChain(blockchain.headChain) {
-		seen := make(map[[32]byte]bool)
-		blockchain.FindForkHelper(hash, seen)
-		rewind, stop := blockchain.ReverseTransactionsChain(blockchain.headChain, 0, seen, conv)
-		blockchain.ApplyTransactionsChain(hash, stop, conv)
-		if rewind > 0 {
-			fmt.Println("FORK-LONGER", "rewind", rewind, "blocks")
-			log.Println("FORK-LONGER", "rewind", rewind, "blocks")
+	blockchain.UpdateLongestChain(conv, hash)
+
+	// if we already no this node has a child, then we fix the flag
+	// This is like "missing node found"
+	//Why doing it as the end ? Because we want to make sure every transactions are applied
+	// Suppose we missed node C and we just saw it.
+	// Then, if we are under: A-B-[C]-D-E, by first updating the longest chain with C we will
+	// make sure every transactions before C are done, and then we can do securely the transactions
+	// between E and C
+	// Otherwise, we are only gonna do the transactions between E and C, C excluded. And it could
+	// be even worse if before C the longest chain was A-I-J-K, and hence the transaction on
+	// B wasn't yet computed. At least, that's how I see it
+
+	if entry, ok := blockchain.waitingToBeResolved[hash]; ok {
+		currentBcn.children = entry
+		delete(blockchain.waitingToBeResolved, hash)
+		leaves := blockchain.getLeaves(hash)
+		log.Println("saw missing node", leaves)
+		for _, leaf := range leaves {
+			blockchain.UpdateLongestChain(conv, leaf)
 		}
-		blockchain.headChain = hash
 	}
+
 	//fmt.Println("new head =", conv[blockchain.headChain])
+
 }
 
 type TryWrapper struct {
@@ -231,7 +283,7 @@ func (bc *BlockChain) mineInner(transaction []TxPublish, prevhash [32]byte) {
 func (bc *BlockChain) MineNextBlock() {
 	transaction := bc.GetNextTransactionsToMine()
 
-	if !bc.isMining /*&& len(transaction) > 0*/ {
+	if !bc.isMining /*&& len(transaction) > 0 */ {
 		bc.nextFilesToAdd = []TxPublish{}
 		bc.isMining = true
 		go bc.mineInner(transaction, bc.headChain)
@@ -241,7 +293,7 @@ func (bc *BlockChain) MineNextBlock() {
 func (blockchain *BlockChain) GetNextTransactionsToMine() []TxPublish {
 	transaction := []TxPublish{}
 	for _, t := range blockchain.nextFilesToAdd {
-		if _, ok := blockchain.nameToHash[t.File.Name]; !ok {
+		if entry, ok := blockchain.nameToHash[t.File.Name]; !ok || (ok && entry.nb <= 0) {
 			transaction = append(transaction, t)
 
 		}
@@ -302,7 +354,7 @@ func (bc *BlockChain) Work() {
 
 		case tryTxPublish := <-bc.TryTxPublish:
 			t := tryTxPublish.content.(TxPublish)
-			_, ok := bc.nameToHash[t.File.Name]
+			entry, ok := bc.nameToHash[t.File.Name]
 			seen := false
 			for _, f := range bc.nextFilesToAdd {
 				seen = seen || (f.File.Name == t.File.Name &&
@@ -310,7 +362,7 @@ func (bc *BlockChain) Work() {
 					HashToUid(f.File.MetafileHash) == HashToUid(t.File.MetafileHash))
 			}
 
-			tryTxPublish.callback <- !ok && !seen
+			tryTxPublish.callback <- (!ok || (ok && entry.nb <= 0)) && !seen
 
 		case txPublish := <-bc.AddTxPublish:
 			bc.nextFilesToAdd = append(bc.nextFilesToAdd, txPublish)
@@ -322,20 +374,21 @@ func (bc *BlockChain) Work() {
 
 func NewBlockChain() *BlockChain {
 	bc := &BlockChain{
-		isMining:         false,
-		nameToHash:       make(map[string]*BlockChainMapEntry),
-		blocks:           make(map[[32]byte]*BlockChainNode),
-		nextFilesToAdd:   []TxPublish{},
-		blockMinedSignal: make(chan MineEndSignal, 10),
-		ReleaseBlock:     make(chan Block, 64),
-		AddBlock:         make(chan Block, 64),
-		TryBlock:         make(chan TryWrapper, 64),
-		AddTxPublish:     make(chan TxPublish, 64),
-		TryTxPublish:     make(chan TryWrapper, 64),
+		isMining:            false,
+		nameToHash:          make(map[string]*BlockChainMapEntry),
+		blocks:              make(map[[32]byte]*BlockChainNode),
+		nextFilesToAdd:      []TxPublish{},
+		blockMinedSignal:    make(chan MineEndSignal, 10),
+		ReleaseBlock:        make(chan Block, 64),
+		AddBlock:            make(chan Block, 64),
+		TryBlock:            make(chan TryWrapper, 64),
+		AddTxPublish:        make(chan TxPublish, 64),
+		TryTxPublish:        make(chan TryWrapper, 64),
+		waitingToBeResolved: make(map[[32]byte][][32]byte),
 	}
 
 	bc.headChain = [32]byte{}
-	bcn := &BlockChainNode{parent: bc.headChain, hasChildren: false, block: nil}
+	bcn := &BlockChainNode{parent: bc.headChain, children: [][32]byte{}, block: nil}
 	bc.blocks[bc.headChain] = bcn
 	return bc
 }
