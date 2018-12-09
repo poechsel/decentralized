@@ -219,7 +219,7 @@ func (blockchain *BlockChain) AppendBlock(block *Block) {
 	}
 
 	if isForkShorter {
-		fmt.Println("FORK-SHORTER", HashToUid(hash[:]))
+		fmt.Println("FORK-SHORTER", HashToUid(block.PrevHash[:]))
 	}
 
 	currentBcn := NewBlockChainNode(block)
